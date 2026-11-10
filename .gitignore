@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.egg-info/
+.ruff_cache/
+examples/demo_report.html
+*.db
+*.db-wal
+*.db-shm
+state/
