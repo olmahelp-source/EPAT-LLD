@@ -3,3 +3,5 @@ from .metrics import (annualized_return, drawdown_periods, drawdown_series, infe
                       to_returns, ulcer_index)
 from .report import build_report, html_report, text_report, to_json
 from .trades import (contribution_by, cost_attribution, exposure_stats, trade_statistics, trades_frame)
+from .evaluation import (Check, EvaluationLimits, StrategyVerdict, bootstrap_metrics, compare_strategies, drawdown_probability,
+                         evaluate_backtest, evaluate_strategy, regime_breakdown, rolling_stability, trade_concentration)

@@ -126,3 +126,51 @@ class OptimizationError(PlatformError):
 
 class StatisticsError(PlatformError):
     pass
+
+
+class ExpressionError(StrategyError):
+    """A formula / rule expression is malformed or uses something that is not allowed."""
+
+
+class GovernanceError(PlatformError):
+    """A lifecycle or approval rule was violated (e.g. the author approving their own strategy)."""
+
+
+# ---- instruments / models -------------------------------------------------------------------
+class InstrumentError(DataError):
+    pass
+
+
+class ModelError(PlatformError):
+    """A learning model was misused: not fitted, wrong shapes, degenerate training data."""
+
+
+# ---- notifications ----------------------------------------------------------------------------
+class NotificationError(PlatformError):
+    pass
+
+
+class DeliveryError(NotificationError):
+    """A channel could not deliver right now (network, rate limit); trying again can help."""
+    retryable = True
+
+
+# ---- resilience ---------------------------------------------------------------------------------
+class OperationTimeout(PlatformError):
+    retryable = True
+
+
+class CapacityError(PlatformError):
+    """A bulkhead / queue is full; the caller should back off."""
+    retryable = True
+
+
+class AggregateError(PlatformError):
+    """Several failures reported as one, so a batch can finish before it complains."""
+
+    def __init__(self, message: str = "", errors: Optional[list] = None, **kwargs: Any) -> None:
+        self.errors = list(errors or [])
+        details = dict(kwargs.pop("details", None) or {})
+        details.setdefault("count", len(self.errors))
+        details.setdefault("errors", [repr(e) for e in self.errors[:20]])
+        super().__init__(message or f"{len(self.errors)} operation(s) failed", details=details, **kwargs)

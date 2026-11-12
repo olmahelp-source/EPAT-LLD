@@ -146,14 +146,21 @@ class CredentialVault:
         self._store.pop(ref, None)
 
 
+_P = Permission
+_READ = {_P.VIEW_ORDERS, _P.VIEW_PORTFOLIO}
+# Segregation of duties: research cannot trade, trading cannot reset its own kill switch or approve its own strategy,
+# risk and audit cannot trade. Only ADMIN holds everything.
 ROLE_PERMISSIONS: Dict[Role, FrozenSet[Permission]] = {
     Role.ADMIN: frozenset(Permission),
-    Role.TRADER: frozenset({Permission.PLACE_ORDER, Permission.CANCEL_ORDER, Permission.VIEW_ORDERS,
-                            Permission.MANAGE_STRATEGY, Permission.RUN_BACKTEST,
-                            Permission.VIEW_PORTFOLIO, Permission.MANAGE_BROKERS,
-                            Permission.TRIGGER_KILL_SWITCH}),
-    Role.RISK_MANAGER: frozenset({Permission.VIEW_ORDERS, Permission.VIEW_PORTFOLIO, Permission.MANAGE_RISK,
-                                  Permission.CANCEL_ORDER, Permission.TRIGGER_KILL_SWITCH,
-                                  Permission.RESET_KILL_SWITCH}),
-    Role.VIEWER: frozenset({Permission.VIEW_ORDERS, Permission.VIEW_PORTFOLIO}),
+    Role.QUANT: frozenset(_READ | {_P.RUN_BACKTEST, _P.MANAGE_STRATEGY, _P.TRAIN_MODEL, _P.SUBMIT_STRATEGY, _P.VIEW_RISK}),
+    Role.TRADER: frozenset(_READ | {_P.PLACE_ORDER, _P.CANCEL_ORDER, _P.MANAGE_STRATEGY, _P.RUN_BACKTEST, _P.MANAGE_BROKERS,
+                                    _P.TRIGGER_KILL_SWITCH, _P.SUBMIT_STRATEGY, _P.VIEW_RISK, _P.MANAGE_ALERTS}),
+    Role.PORTFOLIO_MANAGER: frozenset(_READ | {_P.RUN_BACKTEST, _P.MANAGE_ALLOCATION, _P.APPROVE_STRATEGY, _P.CANCEL_ORDER,
+                                               _P.TRIGGER_KILL_SWITCH, _P.VIEW_RISK, _P.MANAGE_ALERTS}),
+    Role.RISK_MANAGER: frozenset(_READ | {_P.MANAGE_RISK, _P.CANCEL_ORDER, _P.TRIGGER_KILL_SWITCH, _P.RESET_KILL_SWITCH,
+                                          _P.APPROVE_STRATEGY, _P.VIEW_RISK, _P.VIEW_AUDIT, _P.MANAGE_ALERTS}),
+    Role.OPERATIONS: frozenset(_READ | {_P.OPERATE_SYSTEM, _P.MANAGE_INSTRUMENTS, _P.MANAGE_ALERTS, _P.CANCEL_ORDER,
+                                        _P.TRIGGER_KILL_SWITCH, _P.VIEW_RISK}),
+    Role.AUDITOR: frozenset(_READ | {_P.VIEW_AUDIT, _P.VIEW_RISK}),
+    Role.VIEWER: frozenset(_READ),
 }

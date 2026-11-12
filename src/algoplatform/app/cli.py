@@ -68,10 +68,14 @@ def build_parser() -> argparse.ArgumentParser:
     bt.add_argument("--json", action="store_true", help="print the report as JSON")
     op = sub.add_parser("optimize", help="optimise strategy parameters")
     _common(op)
-    op.add_argument("--method", default="random", choices=["grid", "random", "genetic"])
+    op.add_argument("--method", default="random", choices=["grid", "random", "genetic", "bayesian", "tpe", "pso", "de", "annealing", "cmaes"])
     op.add_argument("--n-iter", type=int, default=30)
     op.add_argument("--metric", default="sharpe")
     sub.add_parser("demo", help="end-to-end demo on synthetic data")
+    st = sub.add_parser("structure", help="show the job groups, their packages and roles, and verify the dependency rules")
+    st.add_argument("--check", action="store_true", help="exit with status 1 if any dependency rule is violated")
+    fn = sub.add_parser("functions", help="list the indicators, patterns and operators usable in formulas")
+    fn.add_argument("--kind", choices=["indicator", "pattern", "operator"])
     return ap
 
 
@@ -83,6 +87,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             for n in STRATEGIES.names():
                 cls = STRATEGIES.get(n)
                 print(f"{n:<20} params={cls.PARAMS}")
+            return 0
+        if args.cmd == "structure":
+            from ..architecture import check_architecture, structure_text
+            print(structure_text())
+            problems = check_architecture()
+            print("dependency rules: OK" if not problems else "dependency rules VIOLATED:\n  " + "\n  ".join(problems))
+            return 1 if problems and args.check else 0
+        if args.cmd == "functions":
+            from ..technical.catalog import describe
+            for f in describe(kind=args.kind):
+                print(f"{f['kind']:<10}{f['category']:<12}{f['signature']}")
             return 0
         if args.cmd == "demo":
             args = build_parser().parse_args(["backtest", "--strategy", "sma_crossover"])
@@ -103,7 +118,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             space = ParameterSpace.from_bounds(cls.PARAM_BOUNDS)
             eng = BacktestEngine(data, cfg)
             obj = backtest_objective(eng, lambda **p: cls(symbols, **{**params, **p}), args.metric)
-            kwargs = {"n_iter": args.n_iter} if args.method == "random" else {}
+            kwargs = {"n_iter": args.n_iter} if args.method in ("random", "bayesian", "tpe", "annealing") else {}
             out = optimize(obj, space, args.method, **kwargs)
             print(json.dumps(out.summary(), indent=2, default=str))
             print(out.top(5).to_string(index=False))

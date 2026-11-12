@@ -3,3 +3,5 @@ from .optimizers import (OptimizationResult, backtest_objective, genetic_search,
 from .space import Param, ParameterSpace
 from .walkforward import WalkForwardResult, walk_forward
 from .parallel import ParallelBacktestObjective, make_parallel_objective
+from .advanced import (ADVANCED_METHODS, UnitCube, bayesian_search, cma_es, differential_evolution, multi_objective_search,
+                       pareto_front, pso_search, simulated_annealing, successive_halving, tpe_search)

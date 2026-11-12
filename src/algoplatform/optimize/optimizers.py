@@ -261,7 +261,8 @@ def genetic_search(objective: Objective, space: ParameterSpace, population: int 
 
 
 def optimize(objective: Objective, space: ParameterSpace, method: str = "random", **kwargs: Any) -> OptimizationResult:
-    methods = {"grid": grid_search, "random": random_search, "genetic": genetic_search}
+    from .advanced import ADVANCED_METHODS                         # imported here: advanced builds on this module
+    methods = {"grid": grid_search, "random": random_search, "genetic": genetic_search, **ADVANCED_METHODS}
     if method not in methods:
         raise OptimizationError(f"unknown method '{method}'", details={"valid": sorted(methods)})
     return methods[method](objective, space, **kwargs)
