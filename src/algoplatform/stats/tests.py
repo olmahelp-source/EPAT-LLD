@@ -152,7 +152,8 @@ def ou_half_life(x) -> Dict[str, float]:
     if b >= 0:
         return {"half_life": math.inf, "theta": 0.0, "mu": float(x.mean()), "sigma": float(np.std(fit.resid))}
     theta = -b
-    return {"half_life": math.log(2) / -math.log(1 + b) if b > -1 else 0.0, "theta": float(theta),
+    # log1p keeps precision when b is a tiny negative number (1 + b would round to exactly 1 and divide by zero)
+    return {"half_life": math.log(2) / -math.log1p(b) if b > -1 else 0.0, "theta": float(theta),
             "mu": float(a / theta), "sigma": float(np.std(fit.resid, ddof=1))}
 
 

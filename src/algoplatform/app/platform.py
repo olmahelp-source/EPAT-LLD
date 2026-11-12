@@ -16,6 +16,14 @@ from ..core.exceptions import ConfigError
 from ..core.logging import AuditLog, get_logger, setup_logging
 from ..core.models import Order
 from ..data.store import MarketData
+from ..governance.lifecycle import StrategyLifecycle
+from ..governance.models import ModelRegistry
+from ..instruments.master import InstrumentMaster
+from ..notify.alerts import AlertManager
+from ..notify.channels import MemoryChannel
+from ..notify.notifier import Notifier
+from ..ops.health import HealthMonitor
+from ..ops.scheduler import Scheduler
 from ..optimize.optimizers import OptimizationResult, backtest_objective, optimize
 from ..optimize.space import ParameterSpace
 from ..portfolio.allocation import FundAllocator
@@ -37,6 +45,28 @@ class TradingPlatform:
         self.accounts = BrokerAccountManager(audit=self.audit, gateway_factory=self._make_gateway)
         self.allocator = FundAllocator(self.config.initial_capital)
         self.engines: Dict[str, TradingEngine] = {}
+        # shared services used through the role desks (app.workspaces)
+        self.instruments = InstrumentMaster()
+        self.notifier = Notifier()
+        self.inbox = MemoryChannel("inbox")                      # every platform notification, for the UI and for audit
+        self.notifier.add_channel(self.inbox)
+        self.notifier.bridge(self.bus)                           # kill switch / risk breach / system error -> notifications
+        self.alerts = AlertManager(self.notifier)
+        self.health = HealthMonitor(self.notifier)
+        self.scheduler = Scheduler()
+        self.lifecycle = StrategyLifecycle(self.audit)
+        self.models = ModelRegistry()
+
+    # ---- role desks ----------------------------------------------------------------------------
+    def desk(self, user: User, name: str):
+        """Open one role desk (research, trading, portfolio, risk, operations, compliance, admin)."""
+        from .workspaces import open_desk
+        return open_desk(self, user, name)
+
+    def desks(self, user: User):
+        """Every desk the user's role may open."""
+        from .workspaces import desks_for
+        return desks_for(self, user)
 
     # ---- factories ---------------------------------------------------------------------------
     def _make_gateway(self, broker: str, credentials: Dict[str, str], paper: bool) -> BrokerGateway:
@@ -112,5 +142,6 @@ class TradingPlatform:
 
     # ---- allocation ------------------------------------------------------------------------------
     def allocate_capital(self, user: User, weights: Dict[str, float]) -> Dict[str, float]:
-        UserManager.authorize(user, Permission.MANAGE_RISK)
+        if not user.has(Permission.MANAGE_ALLOCATION):             # allocation is the portfolio manager's job; risk may do it too
+            UserManager.authorize(user, Permission.MANAGE_RISK)
         return self.allocator.allocate(weights)
