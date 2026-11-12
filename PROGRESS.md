@@ -3,8 +3,15 @@
 This file is the single source of truth for what has been built, what has been verified, and what is still pending.
 It is updated at the end of every unit of work. Rules for keeping it honest are in [`CLAUDE.md`](CLAUDE.md).
 
-**Last updated:** 2026-11-12, after commit `0d40e28` and the final verification run
-**Branch:** `ccr-b7d3820c-a4gug7`
+**Last updated:** 2026-11-12, after the final verification run and the CI confirmation
+**Working branch:** `ccr-b7d3820c-a4gug7`
+**Default branch:** `claude/trading-platform-system-y9ke4s`
+
+**Merge state.** Pull request #2 merged the first four commits of this work (all source code and all tests) into the
+default branch. Three later commits are on the working branch only and still need a pull request:
+"Add architecture document, quant-lab example and README update; clean lint findings", "Update the progress record to
+the verified final state" and "Record the CI result and the merge state". Until they are merged, the default branch
+lacks the documentation, the example script and the six lint fixes (its lint job fails on unused imports).
 
 ---
 
@@ -12,15 +19,16 @@ It is updated at the end of every unit of work. Rules for keeping it honest are 
 
 | Area | State |
 |---|---|
-| Source code for every requested item | **Done.** 71 new source files (about 10,300 lines) and 16 modified source files. |
+| Source code for every requested item | **Done.** 71 new source files (about 10,300 lines) and 17 modified source files. |
 | Tests for the new code | **Done and passing.** 8 new test files, 277 tests (about 3,900 lines). |
 | Whole test-suite | **684 tests pass** (407 original + 277 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`, the project's configuration) | **Clean.** |
 | Example scripts | **All three run** (`run_demo`, `run_advanced`, `run_quant_lab`). |
 | Documentation | **Done.** `README.md` updated; `docs/ARCHITECTURE.md` added. |
-| Committed and pushed | **Yes.** |
-| Continuous integration on Python 3.10 to 3.12 | **Not confirmed from here.** This machine has Python 3.13 only. A static scan of all 211 Python files found no syntax or library feature newer than 3.10; the CI run on the pushed branch is the real check. |
+| Committed and pushed | **Yes** (working branch; see the merge state above). |
+| Continuous integration | **Confirmed on GitHub Actions** for the commit that holds all code and documentation: lint, tests on Python 3.10, 3.11, 3.12 and 3.13, and the optional-dependencies job all succeeded. |
+| Type-check job (`mypy`) | **Fails, as it did before this work.** The workflow marks it informational (`continue-on-error`). 112 findings are in files that existed before, 66 are in new files. All are annotation-precision findings; the attribute-related ones were reviewed and none is a runtime defect. |
 
 Nothing in this file is marked done without a command in section 7 that proves it.
 
@@ -178,9 +186,9 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 
 ## 6. Pending tasks
 
-Nothing from the original request is pending. What remains is listed in order of value; none of it is started.
+Nothing from the original request is pending. What remains, in order of value; none of it is started.
 
-1. **Confirm the CI run** on the pushed branch (Python 3.10, 3.11, 3.12, 3.13 and the lint job). Could not be run here.
+1. **Open and merge a pull request** for the three commits made after pull request #2 (see the merge state at the top).
 2. **Web UI for the new features.** The browser UI still shows the original tabs. The new packages are reachable from
    Python and the CLI only. Only the role list in the UI was updated.
 3. **Persist the new shared services.** Notification routes, alert rules, strategy lifecycle records, the model
@@ -188,8 +196,10 @@ Nothing from the original request is pending. What remains is listed in order of
    survive a restart (orders, fills, positions and the kill switch do).
 4. **Run the integrations against real services** before relying on them: the Claude sentiment client, Slack,
    Telegram, webhook and e-mail channels. All are tested against fakes only.
-5. **Not built, by decision:** margin model, multi-currency accounting, tick / order-book simulation.
-6. Optional: move packages into one directory per job group (see the note in section 4).
+5. **Type annotations.** Clear the 66 `mypy` findings in the new files (and, separately, the 112 older ones) so the
+   type-check job can become blocking.
+6. **Not built, by decision:** margin model, multi-currency accounting, tick / order-book simulation.
+7. Optional: move packages into one directory per job group (see the note in section 4).
 
 ---
 
@@ -206,6 +216,9 @@ Nothing from the original request is pending. What remains is listed in order of
 | 2026-11-12 | `python examples/run_demo.py`, `run_advanced.py`, `run_quant_lab.py` (deprecation warnings as errors) | all exit 0; `run_quant_lab` takes about 9 s |
 | 2026-11-12 | static scan of 211 `.py` files for syntax and library features newer than Python 3.10 | none found |
 | 2026-11-12 | import of `algoplatform.web.server` | OK |
+| 2026-11-12 | GitHub Actions, workflow "CI", run 11 (all code, tests, documentation and lint fixes) | lint: success; test 3.10, 3.11, 3.12, 3.13: success; optional-dependencies: success; typecheck (informational): failure |
+| 2026-11-12 | GitHub Actions, runs 6 to 9 (commits before the lint fixes) | failed in the lint job only: six unused imports, since removed |
+| 2026-11-12 | `python -m mypy src/algoplatform` | 178 findings in 50 files: 112 in pre-existing files, 66 in new files |
 
 ---
 
