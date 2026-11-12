@@ -5,7 +5,7 @@ made by a model that had not seen that row, nor (with ``embargo``) any training 
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict
 
 import numpy as np
 
