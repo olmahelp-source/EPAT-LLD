@@ -120,9 +120,15 @@ def regime_breakdown(returns: Any, regimes: Any, periods: Optional[float] = None
     ``ai.RegimeDetector.regimes`` or ``volatility.VolRegime.classify``; use causal labels). ``pnl_share`` shows how much
     of the total (log) return each regime contributed: a strategy with 90% in one regime is a bet on that regime."""
     r = _returns(returns, 10)
-    lab = pd.Series(np.asarray(regimes), index=r.index) if not isinstance(regimes, pd.Series) else regimes.reindex(r.index)
-    if len(lab) != len(r) or lab.isna().all():
-        raise ValidationError("regimes must provide one label per return")
+    if not isinstance(regimes, pd.Series):
+        values = np.asarray(regimes)
+        if len(values) != len(r):
+            raise ValidationError("regimes must provide one label per return", details={"labels": len(values), "returns": len(r)})
+        lab = pd.Series(values, index=r.index)
+    else:
+        lab = regimes.reindex(r.index)
+    if lab.isna().all():
+        raise ValidationError("no regime label matches the returns' index")
     ppy = _periods(r, periods)
     total = float(np.log1p(r.clip(lower=-0.999999)).sum())
     rows = []

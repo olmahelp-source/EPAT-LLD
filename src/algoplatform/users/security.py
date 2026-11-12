@@ -162,5 +162,5 @@ ROLE_PERMISSIONS: Dict[Role, FrozenSet[Permission]] = {
     Role.OPERATIONS: frozenset(_READ | {_P.OPERATE_SYSTEM, _P.MANAGE_INSTRUMENTS, _P.MANAGE_ALERTS, _P.CANCEL_ORDER,
                                         _P.TRIGGER_KILL_SWITCH, _P.VIEW_RISK}),
     Role.AUDITOR: frozenset(_READ | {_P.VIEW_AUDIT, _P.VIEW_RISK}),
-    Role.VIEWER: frozenset(_READ),
+    Role.VIEWER: frozenset(_READ | {_P.VIEW_RISK}),             # may open the risk desk's snapshot; every action on it needs more
 }
