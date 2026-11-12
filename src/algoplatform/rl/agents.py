@@ -64,6 +64,8 @@ class QLearningAgent(_Exploring):
         return self.q.get(self._state(obs), np.zeros(self.n_actions))
 
     def act(self, obs, greedy: bool = False) -> int:
+        if self._edges is None:                                         # fail on the first call, not later on the first greedy one
+            raise ModelError("call prepare(observations) before using the agent")
         if not greedy and self._rng.random() < self.epsilon:
             return int(self._rng.integers(self.n_actions))
         q = self.q_values(obs)

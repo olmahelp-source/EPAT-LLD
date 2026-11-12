@@ -44,21 +44,26 @@ def find_cointegrated_pairs(prices: pd.DataFrame, level: str = "5%", min_half_li
                             use_log: bool = True) -> pd.DataFrame:
     """Engle-Granger test on every pair (both directions, the stronger kept), filtered to spreads that mean-revert at a
     tradable speed. ``attrs["expected_false_positives"]`` reminds you that testing many pairs at 5% finds 5% by luck:
-    treat the output as candidates to validate out of sample, not as discoveries."""
+    treat the output as candidates to validate out of sample, not as discoveries. Pairs that could not be tested
+    (a constant series, a degenerate regression) are listed in ``attrs["skipped"]`` instead of stopping the scan."""
     if level not in ("1%", "5%", "10%"):
         raise StatisticsError("level must be '1%', '5%' or '10%'")
     data = np.log(prices) if use_log else prices
-    rows, tested = [], 0
+    rows, tested, skipped = [], 0, []
     for a, b in combinations(prices.columns, 2):
         pair = data[[a, b]].dropna()
         if len(pair) < 60:
+            continue
+        if pair[a].std() == 0 or pair[b].std() == 0:               # a series that never moves cannot be tested
+            skipped.append(f"{a}/{b}: constant series")
             continue
         tested += 1
         best = None
         for y, x in ((a, b), (b, a)):
             try:
                 res = engle_granger(pair[y].to_numpy(), pair[x].to_numpy())
-            except PlatformError:
+            except (PlatformError, ArithmeticError, np.linalg.LinAlgError) as exc:     # one degenerate pair must not end the scan
+                skipped.append(f"{y}/{x}: {type(exc).__name__}")
                 continue
             if best is None or res["stat"] < best[2]["stat"]:
                 best = (y, x, res)
@@ -72,5 +77,5 @@ def find_cointegrated_pairs(prices: pd.DataFrame, level: str = "5%", min_half_li
                          "hedge_ratio": float(res["hedge_ratio"]), "half_life": float(hl),
                          "zscore": float((resid[-1] - resid.mean()) / resid.std(ddof=1)) if resid.std(ddof=1) > 0 else 0.0, "n": len(pair)})
     out = pd.DataFrame(rows, columns=["y", "x", "stat", "critical", "hedge_ratio", "half_life", "zscore", "n"]).sort_values("stat").reset_index(drop=True)
-    out.attrs.update(tested=tested, expected_false_positives=tested * float(level.rstrip("%")) / 100.0)
+    out.attrs.update(tested=tested, expected_false_positives=tested * float(level.rstrip("%")) / 100.0, skipped=skipped)
     return out

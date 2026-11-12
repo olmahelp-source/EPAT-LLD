@@ -141,7 +141,8 @@ class DecisionTree:
             node = np.where(inner, np.where(go_left, self.left_[node], self.right_[node]), node)
 
     def predict_value(self, X) -> np.ndarray:
-        return self.value_[self.apply(X)]
+        leaves = self.apply(X)                          # first: raises ModelError when the tree has not been fitted
+        return self.value_[leaves]
 
     def predict_proba(self, X) -> np.ndarray:
         if self.task != "classification":

@@ -77,7 +77,9 @@ class RelationshipManager:
                 except PlatformError as exc:
                     self.errors.append(f"{a}/{b} lead-lag: {exc.message}")
         try:
-            for row in find_cointegrated_pairs(prices, coint_level).itertuples(index=False):
+            pairs = find_cointegrated_pairs(prices, coint_level)
+            self.errors += [f"cointegration {msg}" for msg in pairs.attrs.get("skipped", [])]
+            for row in pairs.itertuples(index=False):
                 self.add(row.y, row.x, "cointegrated", row.stat, hedge_ratio=row.hedge_ratio, half_life=row.half_life)
         except PlatformError as exc:
             self.errors.append(f"cointegration scan: {exc.message}")
