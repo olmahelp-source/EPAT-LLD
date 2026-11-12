@@ -87,8 +87,9 @@ class IndicatorValueTests(unittest.TestCase):
         h = np.array([1, 2, 3, 9, 4, 5, 6.0])
         l = h - 0.5
         a = ta.aroon(h, l, 4)
-        self.assertEqual(a["up"][6], 25.0)                                            # the high (9) was 3 bars ago in a 4-bar lookback
-        self.assertEqual(a["up"][3], 100.0)
+        self.assertTrue(np.isnan(a["up"][3]))                                         # needs n + 1 bars
+        self.assertEqual(a["up"][4], 75.0)                                            # the high (9) was 1 bar ago
+        self.assertEqual(a["up"][6], 25.0)                                            # ... and 3 bars ago two bars later
 
     def test_ichimoku_spans_are_shifted_forward_never_backward(self):
         h, l, c = DF["high"].to_numpy(), DF["low"].to_numpy(), DF["close"].to_numpy()
@@ -275,15 +276,21 @@ class ChartPatternTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             ta.divergences(df["high"], df["low"], osc[:-1])
 
-    def test_scan_is_prefix_consistent(self):
-        long = synthetic.regime_switching(700, seed=4)
-        full = [m for m in ta.scan_chart_patterns(long) if m.confirm < 500 and "triangle" not in m.name and m.name not in
-                ("rectangle", "channel_up", "channel_down", "rising_wedge", "falling_wedge", "broadening")]
-        part = [m for m in ta.scan_chart_patterns(long.iloc[:500]) if m.confirm < 499 and m in full or m.confirm < 500 and m.name.endswith("divergence")
-                or m.name in ("double_top", "double_bottom", "head_and_shoulders", "inverse_head_and_shoulders")]
-        self.assertEqual([m for m in part if m.confirm < 500], full)
-        signals = ta.pattern_signals(full, 500)
-        self.assertEqual(int(np.abs(signals).sum()) > 0, len(full) > 0)
+    def test_detection_is_prefix_consistent(self):
+        """Running the detectors on the first 500 bars must give exactly the full-history matches confirmed before bar 500."""
+        long = synthetic.gbm(700, sigma=0.3, seed=4)
+
+        def reversals(df):
+            h, l, c = df["high"], df["low"], df["close"]
+            found = ta.double_tops_bottoms(h, l, c) + ta.head_and_shoulders(h, l, c) + ta.divergences(h, l, ta.rsi(c, 14))
+            return sorted((m.name, m.start, m.end, m.confirm, round(m.level, 8)) for m in found)
+        full = [m for m in reversals(long) if m[3] < 500]
+        self.assertEqual(reversals(long.iloc[:500]), full)
+        self.assertGreater(len(full), 3)
+        matches = [m for m in ta.scan_chart_patterns(long) if m.confirm < 700]
+        signals = ta.pattern_signals(matches, len(long))
+        self.assertEqual(len(signals), len(long))
+        self.assertEqual(int(signals.sum()), sum(m.direction for m in matches))
 
 
 class OperatorTests(unittest.TestCase):
@@ -327,7 +334,7 @@ class OperatorTests(unittest.TestCase):
     def test_scaling_and_logic(self):
         x = np.array([5, 1, 3, 9, 2.0])
         np.testing.assert_allclose(op.percent_rank(x, 3), [np.nan, np.nan, 0.5, 1.0, 0.0], equal_nan=True)
-        np.testing.assert_allclose(op.normalize(x, 3), [np.nan, np.nan, 0.5, 1.0, 1 / 8], equal_nan=True)
+        np.testing.assert_allclose(op.normalize(x, 3), [np.nan, np.nan, 0.5, 1.0, 0.0], equal_nan=True)
         np.testing.assert_array_equal(op.and_([True, False, True], [True, True, np.nan]), [True, False, False])
         np.testing.assert_array_equal(op.or_([False, False], [np.nan, 1.0]), [False, True])
         np.testing.assert_array_equal(op.not_([1.0, np.nan]), [False, True])
@@ -469,8 +476,22 @@ SPEC = {"name": "trend_pullback", "params": {"fast": 10, "slow": 40}, "bounds": 
 
 def _market(n=500, seed=3):
     md = MarketData()
-    md.add("AAA", synthetic.regime_switching(n, seed=seed))
+    md.add("AAA", synthetic.gbm(n, mu=0.1, sigma=0.25, seed=seed))
     return md
+
+
+def _signals(strategy, md, symbol="AAA"):
+    """Run a backtest and return the strategy's non-hold decisions as [(bar index, reason), ...]."""
+    log = []
+    inner = strategy.on_bar
+
+    def recording(ctx):
+        out = inner(ctx)
+        log.extend((ctx.bars_seen(symbol) - 1, sig.reason) for sig in out if sig.reason != "hold")
+        return out
+    strategy.on_bar = recording
+    result = BacktestEngine(md, free_config()).run(strategy)
+    return log, result
 
 
 class ExpressionStrategyTests(unittest.TestCase):
@@ -481,14 +502,18 @@ class ExpressionStrategyTests(unittest.TestCase):
         self.assertGreater(len(a.trades), 1)
         pd.testing.assert_series_equal(a.equity, b.equity)
 
-    def test_matches_the_equivalent_hand_written_rule(self):
-        """Position state reconstructed from the formulas over the full series must equal what the strategy did bar by bar."""
+    def test_decisions_match_the_formulas_evaluated_over_the_whole_series(self):
+        """Bar by bar on a rolling window, the strategy must enter on exactly the bars where the entry formula is true
+        over the full history, and leave on the first exit bar after each entry."""
         md = _market()
-        res = BacktestEngine(md, free_config()).run(create_from_expressions(SPEC, ["AAA"]))
+        log, _ = _signals(create_from_expressions(SPEC, ["AAA"]), md)
         c = md.frame("AAA")["close"].to_numpy()
         fast, slow = ta.ema(c, 10), ta.ema(c, 40)
-        entries = int(op.crossover(fast, slow)[59:].sum())
-        self.assertTrue(abs(len(res.trades) - entries) <= 1)                          # each crossover opens one trade (last may be open)
+        entries = [int(i) for i in np.flatnonzero(op.crossover(fast, slow)) if i >= 59]
+        exits = [int(i) for i in np.flatnonzero(op.crossunder(fast, slow)) if i > entries[0]]
+        self.assertEqual([bar for bar, reason in log if reason == "long_entry"], entries)
+        self.assertEqual([bar for bar, reason in log if reason == "long_exit"], exits)
+        self.assertGreater(len(entries), 3)
 
     def test_no_look_ahead(self):
         md = _market()
@@ -500,14 +525,31 @@ class ExpressionStrategyTests(unittest.TestCase):
         changed = BacktestEngine(md2, free_config()).run(create_from_expressions(SPEC, ["AAA"]))
         pd.testing.assert_series_equal(base.equity.iloc[:349], changed.equity.iloc[:349])
 
-    def test_target_mode_and_stop(self):
+    def test_target_mode_emits_stepped_weights(self):
         md = _market()
         spec = {"name": "fade", "target": "clamp(-zscore(close, 20) / 2, -1, 1)", "step": 0.25}
-        res = BacktestEngine(md, free_config()).run(create_from_expressions(spec, ["AAA"]))
+        weights = []
+        strat = create_from_expressions(spec, ["AAA"])
+        inner = strat.on_bar
+        strat.on_bar = lambda ctx: [weights.append(sig.target_weight) or sig for sig in inner(ctx)]
+        res = BacktestEngine(md, free_config()).run(strat)
         self.assertGreater(res.order_count, 5)
-        stopped = dict(SPEC, name="with_stop", stop_pct=0.02)
-        more = BacktestEngine(md, free_config()).run(create_from_expressions(stopped, ["AAA"]))
-        self.assertGreaterEqual(len(more.trades), len(BacktestEngine(md, free_config()).run(create_from_expressions(SPEC, ["AAA"])).trades))
+        self.assertTrue(set(np.round(np.abs(weights), 2)) <= {0.0, 0.25, 0.5, 0.75, 1.0})
+        self.assertTrue(min(weights) < 0 < max(weights))                               # fades both ways
+
+    def test_trailing_stop_exits_when_price_falls_from_its_peak(self):
+        md = _market()
+        stop = 0.02
+        log, _ = _signals(create_from_expressions(dict(SPEC, name="with_stop", stop_pct=stop), ["AAA"]), md)
+        plain, _ = _signals(create_from_expressions(SPEC, ["AAA"]), md)
+        c = md.frame("AAA")["close"].to_numpy()
+        stops = [bar for bar, reason in log if reason == "stop"]
+        self.assertGreater(len(stops), 2)
+        entries = [bar for bar, reason in log if reason == "long_entry"]
+        self.assertEqual(entries, [bar for bar, reason in plain if reason == "long_entry"])   # a stop changes exits, not entries
+        for entry, out in zip(entries, stops):
+            self.assertLessEqual(c[out], c[entry:out + 1].max() * (1 - stop) + 1e-9)          # the stop condition held on the exit bar
+            self.assertTrue((c[entry + 1:out] > np.maximum.accumulate(c[entry:out])[1:] * (1 - stop)).all())   # ... and on no earlier bar
 
     def test_params_bounds_clone_and_factory(self):
         s = create_from_expressions(SPEC, ["AAA"], fast=12)
