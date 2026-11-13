@@ -51,7 +51,9 @@ class WebApiTests(unittest.TestCase):
         self.assertIn("<div id=\"root\">", html)
         self.assertIn("default-src 'self'", hdr["Content-Security-Policy"])
         self.assertEqual(hdr["X-Content-Type-Options"], "nosniff")
-        self.assertEqual(self.call("GET", "/app.js")[0], 200)
+        self.assertEqual(self.call("GET", "/js/core.js")[0], 200)
+        self.assertEqual(self.call("GET", "/js/pages/trading.js")[0], 200)
+        self.assertEqual(self.call("GET", "/js/../../server.py")[0], 404)
         self.assertEqual(self.call("GET", "/../server.py")[0], 404)               # path traversal blocked
         self.assertEqual(self.call("GET", "/%2e%2e/server.py")[0], 404)
 

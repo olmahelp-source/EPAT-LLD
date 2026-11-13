@@ -3,7 +3,7 @@
 This file is the single source of truth for what has been built, what has been verified, and what is still pending.
 It is updated at the end of every unit of work. Rules for keeping it honest are in [`CLAUDE.md`](CLAUDE.md).
 
-**Last updated:** 2026-11-13, during round five (repository audit and restructuring)
+**Last updated:** 2026-11-13, after round five (repository audit and restructuring, CLI)
 **Working branch:** `ccr-b7d3820c-a4gug7`
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
@@ -21,7 +21,7 @@ default branch merged into it (commit `a1631ed`, no file changes), so a new pull
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
 | Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
-| Whole test-suite | **820 tests pass** (407 original + 413 new), with deprecation warnings treated as errors. |
+| Whole test-suite | **822 tests pass** (407 original + 415 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
 | Type checker (`mypy`) | **No findings in the files added by this work.** 109 findings remain in files that predate it (the CI job stays informational). |
@@ -191,18 +191,18 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_margin_currency_orderbook.py` | 39 | passing |
 | `tests/test_state_persistence.py` | 19 | passing |
 | `tests/test_web_quant.py` | 15 | passing |
-| `tests/test_web_groups.py` (menu and API follow the structure; the menu matches the server; routes) | 18 | passing |
+| `tests/test_web_groups.py` (menu, scripts and API follow the structure; the menu matches the server; routes) | 20 | passing |
 | `tests/test_data_providers.py` (scenarios, Alpaca and IB against fakes, history library) | 18 | passing |
 | `tests/test_market_data_service.py` (connections, keys, downloads, sample-only lock, environment, restart) | 8 | passing |
 | `tests/test_web_data.py` (data routes, source of every request, lock on the server, history replay and its restart) | 9 | passing |
 | `tests/test_cli.py` (data sources, data commands with a fake Alpaca, the shared lock, the web command) | 7 | passing |
-| **Total** | **820** | **passing** |
+| **Total** | **822** | **passing** |
 
 ---
 
 ## 6. Pending tasks
 
-**Round five, in progress** (requested: audit the whole file structure; remove messy, duplicate and unnecessary files;
+**Round five, done** (requested: audit the whole file structure; remove messy, duplicate and unnecessary files;
 check frontend, backend, middleware, database and API against the platform's rules; a switch for which sample data to use).
 
 | Step | State |
@@ -212,7 +212,7 @@ check frontend, backend, middleware, database and API against the platform's rul
 | Database: downloaded history moved from one JSON document to `bar_series` / `bars` tables (schema v3, upgrade in place), written as it changes; old-format history moved once; `App.close()` closes every database (no more unclosed-connection warnings in the web tests) | **done, tested** |
 | CLI updated (requested during round five): `backtest` / `optimize` take `--source sample|history|csv` and `--scenario`; new `data` commands (scenarios, sample, providers, fetch, list, export, remove, sample-only) on the same state directory and service as the web server; `web` command through the top-level launcher (the installed `algoplatform` command now points there) | **done, tested** (`test_cli`) |
 | API: the 60 routes moved unchanged from five mixed files into `web/routes/<group>.py`, one module per job group; `web/http.py` (middleware), `web/session.py` (paper feed), `web/common.py` (shared helpers); `web/server.py` down from 912 to 289 lines (the app only); `quant_api.py`, `research_api.py`, `desk_api.py`, `data_api.py` deleted; tests check route modules = job groups and each page calls its own group's routes; 3 old type findings fixed on the way | **done, tested** (full suite, browser walkthrough) |
-| Frontend: one script per job group; a sample-scenario choice beside the Sample / Real switch | pending |
+| Frontend: `app.js` (1,744 lines) split into `js/core.js`, `js/pages/<group>.js` (one per job group, same names as the route modules) and `js/shell.js`; a sample-scenario dropdown beside the Sample / Real switch sets the scenario every data form and the generator start with; tests check each page lives in its group's script and the load order | **done, tested** (full suite, three browser walkthroughs) |
 
 
 **Round four, done** (requested: "add a sample data generator, or historical data from a broker (Alpaca or IB), or
@@ -284,6 +284,7 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | full suite after the database change (exit status checked); ruff; structure; mypy; resource warnings in the web tests | **811 tests, OK**; clean; OK; 112 pre-existing findings; 0 unclosed connections |
 | 2026-11-13 | `cd tests && python -m unittest test_cli`; full suite (exit status checked); ruff; structure; mypy | 7 tests OK; **818 tests, OK**; clean; OK; 112 pre-existing findings |
 | 2026-11-13 | after the API restructure: full suite (exit status checked); ruff; structure; mypy; browser walkthrough with a fake Alpaca; every page as admin checked for stray text | **820 tests, OK**, no warnings in the log; clean; OK; 109 pre-existing findings; walkthrough passed (no JavaScript errors, no page wider than a phone, no "null") |
+| 2026-11-13 | after the frontend split: `test_web_groups`, `test_web`; full suite (exit status checked); ruff; structure; mypy; browser: scenario dropdown, data walkthrough with a fake Alpaca, all-roles walkthrough on a fresh server, every page as admin | 29 tests OK; **822 tests, OK**; clean; OK; 109 pre-existing findings; all walkthroughs passed (13 scripts load, no JavaScript errors, no page wider than a phone, no "null") |
 | 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---

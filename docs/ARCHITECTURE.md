@@ -258,9 +258,13 @@ The API is split the same way: `web/routes/<group>.py`, one module per job group
 | `web/session.py` | trading | the paper-trading feed (sample random walk or replayed history) and the metrics alert rules read |
 | `web/common.py` | shared | JSON-safe conversion, chart series, small parsing helpers |
 | `web/routes/*.py` | API | the routes of one job group each |
+| `web/static/js/core.js` | frontend | DOM and chart helpers, the API client, shared form parts (data source, strategy parameters, editable rows) |
+| `web/static/js/pages/*.js` | frontend | the pages of one job group each, with the same names as the route modules |
+| `web/static/js/shell.js` | frontend | sign-in, the menu (`PAGES`), hash routing, the Sample / Real switch and scenario choice, start-up; loaded last |
 
-`tests/test_web_groups.py` checks that the route modules are exactly the job groups, that no route is registered twice,
-and that each page of the UI calls routes of its own group. To let the web
+`tests/test_web_groups.py` checks that the route modules and the page scripts are exactly the job groups, that no route
+is registered twice, that each page's code lives in its group's script and calls routes of its own group, and that
+`index.html` loads the core first and the shell last. To let the web
 layer show each group, its allow-list includes the libraries it displays (`derivatives`, `research`, `ml`, `dl`, `ai`,
 `brokers` for the order-book simulator); the libraries themselves still import nothing from the web or the platform.
 

@@ -10,15 +10,27 @@ from algoplatform.core import Permission, Role
 from algoplatform.users import ROLE_PERMISSIONS
 from test_web_quant import WebQuantTestCase
 
-APP_JS = os.path.join(os.path.dirname(__file__), "..", "src", "algoplatform", "web", "static", "app.js")
+STATIC = os.path.join(os.path.dirname(__file__), "..", "src", "algoplatform", "web", "static")
+JS = os.path.join(STATIC, "js")
+
+
+def js_files():
+    """Every script of the UI: {relative path: source}."""
+    out = {}
+    for dirpath, _, names in os.walk(JS):
+        for name in names:
+            if name.endswith(".js"):
+                with open(os.path.join(dirpath, name), encoding="utf-8") as fh:
+                    out[os.path.relpath(os.path.join(dirpath, name), JS).replace(os.sep, "/")] = fh.read()
+    return out
 USERS = {"admin": Role.ADMIN, "quant": Role.QUANT, "trader": Role.TRADER, "portfolio_manager": Role.PORTFOLIO_MANAGER,
          "risk_manager": Role.RISK_MANAGER, "operations": Role.OPERATIONS, "auditor": Role.AUDITOR, "viewer": Role.VIEWER}
 
 
 def frontend_pages():
-    """The PAGES table of app.js as dicts: id, group, label, build, perm (list)."""
-    with open(APP_JS, encoding="utf-8") as fh:
-        src = fh.read()
+    """The PAGES table of the UI (js/shell.js) as dicts: id, group, label, build, perm (list); and all script text."""
+    files = js_files()
+    src = "\n".join(files.values())
     block = src[src.index("const PAGES = ["):src.index("];", src.index("const PAGES = ["))]
     pages = []
     for m in re.finditer(r'\{ id: "([\w-]+)", group: "(\w+)", label: "([^"]+)", build: (\w+)(?:, perm: \[([^\]]*)\])? \}', block):
@@ -67,6 +79,27 @@ class FrontendFollowsTheStructureTests(unittest.TestCase):
         for p in self.pages:
             self.assertTrue(set(p["perm"]) <= valid, p)
             self.assertTrue(p["perm"] or p["id"] == "home", f"{p['id']} is shown to everyone")
+
+
+class ScriptsFollowTheStructureTests(unittest.TestCase):
+    """The UI is one script per job group, plus a shared core and the shell that loads last."""
+
+    def test_each_page_lives_in_its_groups_script(self):
+        files = js_files()
+        for p in frontend_pages()[0]:
+            where = [f for f, text in files.items() if re.search(rf"\nfunction {p['build']}\(", "\n" + text)]
+            self.assertEqual(where, [f"pages/{p['group']}.js"], p["id"])
+        groups = {g.key for g in GROUPS} - {"foundation"}
+        self.assertEqual({f[len("pages/"):-3] for f in files if f.startswith("pages/")}, groups)
+        self.assertTrue(all(text.startswith('"use strict";') for text in files.values()))
+
+    def test_index_loads_core_first_every_page_script_once_and_the_shell_last(self):
+        with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as fh:
+            scripts = re.findall(r'<script src="/js/([^"]+)" defer></script>', fh.read())
+        self.assertEqual(scripts[0], "core.js")
+        self.assertEqual(scripts[-1], "shell.js")
+        self.assertEqual(sorted(scripts), sorted(js_files()))
+        self.assertEqual(len(scripts), len(set(scripts)))
 
 
 class ApiFollowsTheStructureTests(unittest.TestCase):

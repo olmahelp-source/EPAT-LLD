@@ -75,8 +75,9 @@ Pages have their own addresses (`#/margin`, `#/options`, ...), so the back butto
 cannot open falls back to Home.
 
 **Sample or real data.** The **Sample | Real** switch in the header decides what every data form starts on: generated
-sample data (pick a scenario: random walk, bull, bear, sideways, high volatility, regime switching, crash and recovery,
-cointegrated pairs), or real data (history downloaded from a provider, or your uploads). Each form can still be changed
+sample data, or real data (history downloaded from a provider, or your uploads). With Sample chosen, the dropdown beside
+it picks which sample data every page starts with: a mixed universe, or a scenario (random walk, bull, bear, sideways,
+high volatility, regime switching, crash and recovery, cointegrated pairs). Each form can still be changed
 on its own. Paper trading can replay downloaded daily history bar by bar instead of a random walk. Operations can lock
 the whole platform to sample data (training, demos, a fresh install); the server then refuses downloads, downloaded
 history, uploads and history replay, whatever the browser asks for.
@@ -92,6 +93,7 @@ again or written to disk, and must be entered again after a restart; keys from t
 - The first account created becomes the administrator; later sign-ups are traders. Raise roles on the Users and roles page (a Risk Manager or Admin is needed to reset a tripped kill switch).
 - Every call goes through `TradingPlatform`, so permissions are enforced server-side, not just hidden in the UI. Server text is rendered with `textContent` only, responses carry CSP and no-sniff headers, and the stream authenticates with a header (never a URL token).
 - **Localhost only.** There is no TLS. Do not expose it to a network without a TLS reverse proxy and your own auth in front. Uploaded data lives in server memory.
+- Frontend: no build step. `web/static/js/core.js` (DOM, charts, API client, shared form parts), one script per job group in `web/static/js/pages/` (the same names as the route modules), and `js/shell.js` (sign-in, menu, routing, the data switch), loaded last by `index.html`.
 - API: one module per job group in `web/routes/` (`access`, `market_data`, `signals`, `quant`, `learning`, `strategy`, `capital`, `trading`, `validation`, `operations`, `application`); `web/server.py` is the app (route table, dispatch, error mapping), `web/http.py` the HTTP middleware (limits, headers, static files, the event stream), `web/session.py` the paper-trading feed. Every research route takes `source` = `sample` (with an optional `scenario`), `history` or `uploaded`.
 
 ## Architecture
