@@ -184,7 +184,7 @@ class Expression:
         if isinstance(node, ast.Call):
             name = node.func.id                                                         # type: ignore[attr-defined]
             args = [ev(a) for a in node.args]
-            kwargs = {k.arg: ev(k.value) for k in node.keywords}
+            kwargs = {str(k.arg): ev(k.value) for k in node.keywords}           # "**" arguments were refused in _validate
             try:
                 return self._functions[name](*args, **kwargs)
             except PlatformError as exc:

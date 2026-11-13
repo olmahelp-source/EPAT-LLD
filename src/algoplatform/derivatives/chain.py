@@ -78,16 +78,18 @@ class OptionChain:
         return self._analytics(df)
 
     def _analytics(self, df: pd.DataFrame) -> pd.DataFrame:
-        ivs, greeks = [], {k: [] for k in ("delta", "gamma", "vega", "theta")}
-        for row in df.itertuples(index=False):
+        ivs: List[float] = []
+        greeks: Dict[str, List[float]] = {k: [] for k in ("delta", "gamma", "vega", "theta")}
+        for mid_, strike_, t_, kind in zip(df["mid"].to_numpy(float), df["strike"].to_numpy(float), df["T"].to_numpy(float), df["kind"].astype(str)):
+            mid, strike, T = float(mid_), float(strike_), float(t_)
             iv = float("nan")
-            if np.isfinite(row.mid) and row.mid > 0:
+            if np.isfinite(mid) and mid > 0:
                 try:
-                    iv = implied_vol(float(row.mid), self.spot, float(row.strike), float(row.T), self.r, row.kind, self.q)
+                    iv = implied_vol(mid, self.spot, strike, T, self.r, kind, self.q)
                 except PlatformError:                              # price outside no-arbitrage bounds: stale or bad quote
                     self.iv_failures += 1
             ivs.append(iv)
-            g = bs_greeks(self.spot, float(row.strike), float(row.T), self.r, iv, row.kind, self.q) if np.isfinite(iv) and iv > 1e-5 else {}
+            g = bs_greeks(self.spot, strike, T, self.r, iv, kind, self.q) if np.isfinite(iv) and iv > 1e-5 else {}
             for k in greeks:
                 greeks[k].append(g.get(k, float("nan")))
         return df.assign(iv=ivs, **greeks)

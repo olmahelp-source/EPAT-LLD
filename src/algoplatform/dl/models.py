@@ -39,6 +39,8 @@ def make_sequences(X, y=None, lookback: int = 20) -> Tuple[np.ndarray, Optional[
 
 class _Scaled:
     """Shared plumbing: input standardisation fitted on the training rows."""
+    _ymu: float = 0.0
+    _ysd: float = 1.0
 
     def _fit_scale(self, X: np.ndarray) -> None:
         flat = X.reshape(-1, X.shape[-1])
@@ -120,7 +122,9 @@ class LSTMForecaster(_Scaled):
         self.net_: Optional[Sequential] = None
 
     def fit(self, X, y, sample_weight=None) -> "LSTMForecaster":
-        seq, target, _ = make_sequences(X, y, self.lookback)
+        seq, labels, _ = make_sequences(X, y, self.lookback)
+        assert labels is not None                                       # labels are always returned when y is given
+        target: np.ndarray = labels
         if len(seq) < 20:
             raise ValidationError("too few complete windows to train on", details={"windows": len(seq), "lookback": self.lookback})
         if self.task == "classification" and set(np.unique(target)) - {0.0, 1.0}:

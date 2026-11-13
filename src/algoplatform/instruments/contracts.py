@@ -143,7 +143,8 @@ class ContractSpec:
             kwargs["right"] = {"c": "call", "p": "put", "ce": "call", "pe": "put"}.get(str(kwargs["right"]).lower(), str(kwargs["right"]).lower())
         if "symbol" not in kwargs:
             raise InstrumentError("row has no symbol")
-        return cls(broker_symbols=tuple(sorted(brokers.items())), **{k: (str(v).strip() if isinstance(v, str) else v) for k, v in kwargs.items()})
+        cleaned: Dict[str, Any] = {k: (str(v).strip() if isinstance(v, str) else v) for k, v in kwargs.items()}
+        return cls(broker_symbols=tuple(sorted(brokers.items())), **cleaned)
 
 
 _OCC = re.compile(r"^(?P<und>[A-Z][A-Z0-9.]*?)(?P<ymd>\d{6})(?P<right>[CP])(?P<strike>\d{8})$")

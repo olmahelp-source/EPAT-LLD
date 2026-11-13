@@ -78,5 +78,6 @@ def lead_lag_matrix(returns: pd.DataFrame, max_lag: int = 5) -> pd.DataFrame:
             except StatisticsError:
                 continue
             if res["significant"]:
-                out.loc[a, b], out.loc[b, a] = res["best_lag"], -res["best_lag"]
+                lag = int(res["best_lag"])                              # type: ignore[call-overload]
+                out.loc[a, b], out.loc[b, a] = lag, -lag
     return out

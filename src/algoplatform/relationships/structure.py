@@ -102,4 +102,5 @@ def absorption_ratio(returns: pd.DataFrame, n_components: Optional[int] = None) 
     the market is moving as one block, i.e. diversification is evaporating."""
     k = returns.shape[1]
     n = n_components or max(1, k // 5)
-    return float(pca_factors(returns, n)["explained_ratio"].sum())        # type: ignore[union-attr]
+    ratio: pd.Series = pca_factors(returns, n)["explained_ratio"]          # type: ignore[assignment]
+    return float(ratio.sum())

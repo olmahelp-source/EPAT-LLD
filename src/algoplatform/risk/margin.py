@@ -182,8 +182,8 @@ def scenario_margin(positions: Sequence[MarginPosition], settings: Optional[Scan
         losses = [-sum(_scenario_pnl(p, dp, dv, rate) for p in members) * cover for dp, dv, cover in scenarios]
         worst = max(range(len(losses)), key=losses.__getitem__)
         scan_risk = max(losses[worst], 0.0)
-        floor = sum(abs(p.quantity) * p.multiplier * float(p.underlying_price) * settings.short_option_minimum    # type: ignore[arg-type]
-                    for p in members if p.asset_class == "option" and p.quantity < 0)
+        floor = float(sum((abs(p.quantity) * p.multiplier * float(p.underlying_price or 0.0) * settings.short_option_minimum
+                           for p in members if p.asset_class == "option" and p.quantity < 0), 0.0))
         by_underlying[name] = {"margin": max(scan_risk, floor), "scan_risk": scan_risk, "short_option_minimum": floor,
                                "worst_price_move": scenarios[worst][0], "worst_vol_move": scenarios[worst][1], "positions": len(members)}
     maintenance = sum(v["margin"] for v in by_underlying.values())

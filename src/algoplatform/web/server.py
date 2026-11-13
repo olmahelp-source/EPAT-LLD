@@ -100,7 +100,7 @@ class LiveSession:
         self.history: Dict[str, List[float]] = {s: [] for s in symbols}
         self.cond = threading.Condition()
         self.version = 0
-        self.on_step: Optional[Callable[["LiveSession"], None]] = None     # set by the app: evaluates alert rules
+        self.on_step: Optional[Callable[["LiveSession"], Any]] = None      # set by the app: evaluates alert rules
 
     def touch(self) -> None:
         """Wake stream listeners: the visible state changed."""

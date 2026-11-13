@@ -84,7 +84,8 @@ class InstrumentMaster:
             df = pd.read_csv(path, dtype=str, keep_default_na=False)
         except (ValueError, pd.errors.ParserError) as exc:
             raise InstrumentError(f"cannot parse {path}: {exc}") from exc
-        return self.load_records(df.to_dict("records"), overwrite, on_error)
+        records: List[Dict[str, Any]] = [{str(k): v for k, v in row.items()} for row in df.to_dict("records")]
+        return self.load_records(records, overwrite, on_error)
 
     # ---- lookup -----------------------------------------------------------------------------------------------------------
     def get(self, symbol: str) -> ContractSpec:

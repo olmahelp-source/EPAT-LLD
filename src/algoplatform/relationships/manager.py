@@ -64,7 +64,7 @@ class RelationshipManager:
         cols = list(prices.columns)
         for i, a in enumerate(cols):
             for b in cols[i + 1:]:
-                c = corr.loc[a, b]
+                c = float(corr.loc[a, b])                               # type: ignore[arg-type]
                 if np.isfinite(c) and abs(c) >= corr_threshold:
                     self.add(a, b, "correlated", c)
                 if self.sectors.get(a) and self.sectors.get(a) == self.sectors.get(b):
@@ -72,15 +72,17 @@ class RelationshipManager:
                 try:
                     ll = lead_lag(returns[a].to_numpy(), returns[b].to_numpy(), max_lag)
                     if ll["significant"]:
-                        lead, follow = (a, b) if ll["best_lag"] > 0 else (b, a)
-                        self.add(lead, follow, "leads", ll["correlation"], directed=True, lag=abs(ll["best_lag"]))
+                        lag = int(ll["best_lag"])                           # type: ignore[call-overload]
+                        lead, follow = (a, b) if lag > 0 else (b, a)
+                        self.add(lead, follow, "leads", float(ll["correlation"]), directed=True, lag=abs(lag))   # type: ignore[arg-type]
                 except PlatformError as exc:
                     self.errors.append(f"{a}/{b} lead-lag: {exc.message}")
         try:
             pairs = find_cointegrated_pairs(prices, coint_level)
             self.errors += [f"cointegration {msg}" for msg in pairs.attrs.get("skipped", [])]
-            for row in pairs.itertuples(index=False):
-                self.add(row.y, row.x, "cointegrated", row.stat, hedge_ratio=row.hedge_ratio, half_life=row.half_life)
+            for rec in pairs.to_dict("records"):
+                self.add(str(rec["y"]), str(rec["x"]), "cointegrated", float(rec["stat"]), hedge_ratio=float(rec["hedge_ratio"]),
+                         half_life=float(rec["half_life"]))
         except PlatformError as exc:
             self.errors.append(f"cointegration scan: {exc.message}")
         return self.summary()

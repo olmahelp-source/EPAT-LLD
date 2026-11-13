@@ -38,12 +38,20 @@ class GaussianHMM:
         if n_states < 2 or n_iter < 1 or n_init < 1:
             raise ValidationError("need n_states >= 2, n_iter >= 1, n_init >= 1")
         self.n_states, self.n_iter, self.tol, self.n_init, self.min_var, self.seed = n_states, n_iter, tol, n_init, min_var, seed
-        self.means_: Optional[np.ndarray] = None
+        self.means_: Optional[np.ndarray] = None            # set by fit(); every method below checks for it first
+        self.vars_: np.ndarray = np.empty(0)
+        self.transition_: np.ndarray = np.empty(0)
+        self.start_: np.ndarray = np.empty(0)
 
     # ---- core recursions (scaled, so long series do not underflow) ---------------------------------------------------------
+    def _means(self) -> np.ndarray:
+        if self.means_ is None:
+            raise ModelError("HMM is not fitted")
+        return self.means_
+
     def _emission(self, X: np.ndarray):
         """-> (b, shift): b[t, k] is the emission density divided by exp(shift[t]) (each row's maximum is 1)."""
-        d = X[:, None, :] - self.means_[None, :, :]
+        d = X[:, None, :] - self._means()[None, :, :]
         logb = -0.5 * (np.log(2 * math.pi * self.vars_)[None, :, :] + d ** 2 / self.vars_[None, :, :]).sum(axis=2)
         shift = logb.max(axis=1)
         return np.exp(logb - shift[:, None]), shift
@@ -109,7 +117,7 @@ class GaussianHMM:
                 continue                                                # a degenerate restart: try the next one
             final = self.score(X)
             if best is None or final > best[0]:
-                best = (final, self.start_.copy(), self.transition_.copy(), self.means_.copy(), self.vars_.copy())
+                best = (final, self.start_.copy(), self.transition_.copy(), self._means().copy(), self.vars_.copy())
         if best is None:
             raise ModelError("HMM could not be fitted from any starting point")
         self.loglik_, self.start_, self.transition_, self.means_, self.vars_ = best
@@ -209,11 +217,12 @@ class RegimeDetector:
         k = int(p.argmax())
         return {"state": k, "label": self.labels[k], "probability": float(p[k]), "probabilities": dict(zip(self.labels, map(float, p)))}
 
-    def describe(self) -> List[Dict[str, float]]:
+    def describe(self) -> List[Dict[str, Any]]:
         """Per regime: annualised mean and volatility, and how long it typically lasts."""
         if self._order is None:
             raise ModelError("RegimeDetector is not fitted")
         dur = self.hmm.expected_durations()
-        return [{"label": self.labels[i], "ann_return": float(self.hmm.means_[k, 0] * self.periods),
+        means = self.hmm._means()
+        return [{"label": self.labels[i], "ann_return": float(means[k, 0] * self.periods),
                  "ann_vol": float(math.sqrt(self.hmm.vars_[k, 0] * self.periods)), "expected_bars": float(dur[k])}
                 for i, k in enumerate(self._order)]

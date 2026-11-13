@@ -29,7 +29,7 @@ def correlation_matrix(returns: pd.DataFrame, method: str = "pearson", min_perio
         raise StatisticsError(f"unknown correlation method '{method}'")
     if returns.shape[1] < 2:
         raise StatisticsError("need at least two series")
-    return returns.corr(method=method, min_periods=min_periods)
+    return returns.corr(method=method, min_periods=min_periods)          # type: ignore[arg-type]  # validated just above
 
 
 def rolling_correlation(a: pd.Series, b: pd.Series, window: int = 60) -> pd.Series:
@@ -42,12 +42,13 @@ def ewma_correlation(a, b, lam: float = 0.94) -> np.ndarray:
     if len(a) != len(b) or not 0 < lam < 1:
         raise StatisticsError("series must have equal length and 0 < lam < 1")
     out = np.full(len(a), np.nan)
-    va = vb = cov = None
+    va = vb = cov = 0.0
+    started = False
     for t in range(len(a)):
         if not (np.isfinite(a[t]) and np.isfinite(b[t])):
             continue
-        if va is None:
-            va, vb, cov = a[t] ** 2, b[t] ** 2, a[t] * b[t]
+        if not started:
+            va, vb, cov, started = float(a[t] ** 2), float(b[t] ** 2), float(a[t] * b[t]), True
         else:
             va, vb, cov = lam * va + (1 - lam) * a[t] ** 2, lam * vb + (1 - lam) * b[t] ** 2, lam * cov + (1 - lam) * a[t] * b[t]
             out[t] = cov / np.sqrt(va * vb) if va > 0 and vb > 0 else np.nan

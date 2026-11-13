@@ -58,7 +58,7 @@ class Scheduler:
         if seconds <= 0:
             raise ValidationError("interval must be positive")
         now = self.clock.now()
-        return self._add(Job(name or getattr(fn, "__name__", "job"), fn, interval=timedelta(seconds=seconds),
+        return self._add(Job(name or str(getattr(fn, "__name__", "job")), fn, interval=timedelta(seconds=seconds),
                              next_run=now if run_now else now + timedelta(seconds=seconds)))
 
     def daily_at(self, hhmm: str, fn: Callable[[], Any], name: Optional[str] = None, calendar: Optional[TradingCalendar] = None) -> Job:
@@ -68,7 +68,7 @@ class Scheduler:
             at = dtime(hour, minute)
         except (ValueError, AttributeError):
             raise ValidationError(f"time must be 'HH:MM', got {hhmm!r}") from None
-        job = Job(name or getattr(fn, "__name__", "job"), fn, at=at, calendar=calendar)
+        job = Job(name or str(getattr(fn, "__name__", "job")), fn, at=at, calendar=calendar)
         job.next_run = self._next_daily(job, self.clock.now(), include_today=True)
         return self._add(job)
 

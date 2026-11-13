@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from itertools import combinations
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import pandas as pd
@@ -48,8 +48,10 @@ def find_cointegrated_pairs(prices: pd.DataFrame, level: str = "5%", min_half_li
     (a constant series, a degenerate regression) are listed in ``attrs["skipped"]`` instead of stopping the scan."""
     if level not in ("1%", "5%", "10%"):
         raise StatisticsError("level must be '1%', '5%' or '10%'")
-    data = np.log(prices) if use_log else prices
-    rows, tested, skipped = [], 0, []
+    data: pd.DataFrame = np.log(prices) if use_log else prices          # type: ignore[assignment]
+    rows: List[Dict[str, Any]] = []
+    skipped: List[str] = []
+    tested = 0
     for a, b in combinations(prices.columns, 2):
         pair = data[[a, b]].dropna()
         if len(pair) < 60:
@@ -58,10 +60,10 @@ def find_cointegrated_pairs(prices: pd.DataFrame, level: str = "5%", min_half_li
             skipped.append(f"{a}/{b}: constant series")
             continue
         tested += 1
-        best = None
+        best: Optional[Tuple[str, str, Dict[str, Any]]] = None
         for y, x in ((a, b), (b, a)):
             try:
-                res = engle_granger(pair[y].to_numpy(), pair[x].to_numpy())
+                res = cast(Dict[str, Any], engle_granger(pair[y].to_numpy(), pair[x].to_numpy()))
             except (PlatformError, ArithmeticError, np.linalg.LinAlgError) as exc:     # one degenerate pair must not end the scan
                 skipped.append(f"{y}/{x}: {type(exc).__name__}")
                 continue
@@ -70,10 +72,10 @@ def find_cointegrated_pairs(prices: pd.DataFrame, level: str = "5%", min_half_li
         if best is None:
             continue
         y, x, res = best
-        hl = res["half_life"]
-        if res["stat"] < res["critical_values"][level] and min_half_life <= hl <= max_half_life:
+        hl, stat, critical = float(res["half_life"]), float(res["stat"]), float(res["critical_values"][level])
+        if stat < critical and min_half_life <= hl <= max_half_life:
             resid = np.asarray(res["residuals"])
-            rows.append({"y": y, "x": x, "stat": float(res["stat"]), "critical": float(res["critical_values"][level]),
+            rows.append({"y": y, "x": x, "stat": stat, "critical": critical,
                          "hedge_ratio": float(res["hedge_ratio"]), "half_life": float(hl),
                          "zscore": float((resid[-1] - resid.mean()) / resid.std(ddof=1)) if resid.std(ddof=1) > 0 else 0.0, "n": len(pair)})
     out = pd.DataFrame(rows, columns=["y", "x", "stat", "critical", "hedge_ratio", "half_life", "zscore", "n"]).sort_values("stat").reset_index(drop=True)

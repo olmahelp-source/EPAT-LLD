@@ -47,7 +47,7 @@ def _stats(r: np.ndarray, ppy: float) -> Dict[str, float]:
     years = len(r) / ppy
     return {"sharpe": float(r.mean() / sd * math.sqrt(ppy)) if sd > 0 else 0.0,
             "cagr": float(eq[-1] ** (1.0 / years) - 1.0) if eq[-1] > 0 and years > 0 else -1.0,
-            "max_drawdown": float((np.concatenate([[1.0], eq]) / peak - 1.0).min()), "volatility": float(sd * math.sqrt(ppy))}
+            "max_drawdown": float(np.min(np.concatenate([[1.0], eq]) / peak - 1.0)), "volatility": float(sd * math.sqrt(ppy))}
 
 
 def _block_indices(n: int, length: int, block: int, rng: np.random.Generator) -> np.ndarray:
@@ -90,7 +90,7 @@ def drawdown_probability(returns: Any, threshold: float = 0.20, horizon: Optiona
     worst = np.empty(n_sims)
     for i in range(n_sims):
         eq = np.concatenate([[1.0], np.cumprod(1.0 + x[_block_indices(len(x), horizon, block, rng)])])
-        worst[i] = (eq / np.maximum.accumulate(eq) - 1.0).min()
+        worst[i] = float(np.min(eq / np.maximum.accumulate(eq) - 1.0))
     return {"probability": float((worst <= -threshold).mean()), "median_drawdown": float(np.median(worst)),
             "p95_drawdown": float(np.percentile(worst, 5)), "threshold": threshold, "horizon": horizon}
 

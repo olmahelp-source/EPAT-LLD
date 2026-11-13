@@ -7,7 +7,7 @@ further when volatility is extreme by its own history.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -90,7 +90,8 @@ class VolatilityManager:
     multiplier, further multiplied by ``regime_scale[regime]`` (by default halved when volatility is in its top fifth)."""
 
     def __init__(self, target_vol: float = 0.10, model: str = "ewma", horizon: int = 5, max_leverage: float = 2.0,
-                 regime: VolRegime = None, regime_scale: Dict[str, float] = None, periods: float = 252.0, **model_kwargs: Any) -> None:
+                 regime: Optional[VolRegime] = None, regime_scale: Optional[Dict[str, float]] = None, periods: float = 252.0,
+                 **model_kwargs: Any) -> None:
         self.target_vol, self.model, self.horizon, self.max_leverage, self.periods = target_vol, model, horizon, max_leverage, periods
         self.regime = regime or VolRegime()
         self.regime_scale = {"low": 1.0, "normal": 1.0, "high": 0.5, **(regime_scale or {})}
@@ -101,8 +102,9 @@ class VolatilityManager:
         fitted = make_model(self.model, periods=self.periods, **self.model_kwargs).fit(returns)
         fc = fitted.forecast(self.horizon)
         history = fitted.conditional_vol()
-        regime = str(self.regime.classify(np.append(history, fc.next_vol))[-1])
-        pct = float(self.regime.percentiles(np.append(history, fc.next_vol))[-1])
+        series = np.append(history, fc.next_vol).tolist()
+        regime = str(self.regime.classify(series)[-1])
+        pct = float(self.regime.percentiles(series)[-1])
         base = vol_target_scalar(fc.vol, self.target_vol, self.max_leverage)
         return {"forecast_vol": fc.vol, "next_vol": fc.next_vol, "regime": regime, "percentile": pct, "base_scalar": base,
                 "scalar": base * self.regime_scale[regime], "model": fitted.name, "params": fc.params}

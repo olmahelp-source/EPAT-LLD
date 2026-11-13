@@ -49,7 +49,7 @@ class SelectionResult:
             return {s: 1.0 / len(self.symbols) for s in self.symbols}
         if scheme == "score":
             sc = self.scores.loc[self.symbols, "composite"].clip(lower=0)
-            return (sc / sc.sum()).to_dict() if sc.sum() > 0 else {s: 1.0 / len(self.symbols) for s in self.symbols}
+            return {str(k): float(v) for k, v in (sc / sc.sum()).items()} if sc.sum() > 0 else {s: 1.0 / len(self.symbols) for s in self.symbols}
         raise ValidationError("scheme must be 'equal' or 'score'")
 
 
@@ -259,9 +259,9 @@ def select_one_per_cluster(data: Any, n_clusters: int, ranker: str = "risk_adjus
     if len(usable) < max(2, n_clusters):
         raise ValidationError("not enough instruments with history for the requested clusters", details={"usable": len(usable)})
     returns = pd.DataFrame({s: df["close"].pct_change().iloc[-window:] for s, df in usable.items()})
-    labels = hierarchical_clusters(returns.corr(), n_clusters=n_clusters)["labels"]
-    result = UniverseSelector().rank_by(ranker, **params).per_group({s: f"cluster_{c}" for s, c in labels.items()}, 1).select(usable)   # type: ignore[union-attr]
-    result.scores["cluster"] = labels.reindex(result.scores.index)                    # type: ignore[union-attr]
+    labels: pd.Series = hierarchical_clusters(returns.corr(), n_clusters=n_clusters)["labels"]     # type: ignore[assignment]
+    result = UniverseSelector().rank_by(ranker, **params).per_group({str(s): f"cluster_{c}" for s, c in labels.items()}, 1).select(usable)
+    result.scores["cluster"] = labels.reindex(result.scores.index)
     result.asof = asof
     for s in frames:
         if s not in usable:
