@@ -21,7 +21,7 @@ default branch merged into it (commit `a1631ed`, no file changes), so a new pull
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
 | Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
-| Whole test-suite | **811 tests pass** (407 original + 404 new), with deprecation warnings treated as errors. |
+| Whole test-suite | **818 tests pass** (407 original + 411 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
 | Type checker (`mypy`) | **No findings in the files added by this work.** 112 findings remain in files that predate it (the CI job stays informational). |
@@ -195,7 +195,8 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_data_providers.py` (scenarios, Alpaca and IB against fakes, history library) | 18 | passing |
 | `tests/test_market_data_service.py` (connections, keys, downloads, sample-only lock, environment, restart) | 8 | passing |
 | `tests/test_web_data.py` (data routes, source of every request, lock on the server, history replay and its restart) | 9 | passing |
-| **Total** | **808** | **passing** |
+| `tests/test_cli.py` (data sources, data commands with a fake Alpaca, the shared lock, the web command) | 7 | passing |
+| **Total** | **818** | **passing** |
 
 ---
 
@@ -209,6 +210,7 @@ check frontend, backend, middleware, database and API against the platform's rul
 | Audit: inventory of all 238 tracked files; nothing generated is tracked; every module is imported; no duplicated function bodies; two unused names | **done** |
 | Small fixes: the order manager refuses a reused order id (`DuplicateOrderError`) instead of overwriting; unused `make_loopback` removed; ignore rules for tool caches and logs; 39 local cache folders and a generated report deleted | **done, tested** |
 | Database: downloaded history moved from one JSON document to `bar_series` / `bars` tables (schema v3, upgrade in place), written as it changes; old-format history moved once; `App.close()` closes every database (no more unclosed-connection warnings in the web tests) | **done, tested** |
+| CLI updated (requested during round five): `backtest` / `optimize` take `--source sample|history|csv` and `--scenario`; new `data` commands (scenarios, sample, providers, fetch, list, export, remove, sample-only) on the same state directory and service as the web server; `web` command through the top-level launcher (the installed `algoplatform` command now points there) | **done, tested** (`test_cli`) |
 | API: one route module per job group; HTTP middleware and the paper feed in their own files | pending |
 | Frontend: one script per job group; a sample-scenario choice beside the Sample / Real switch | pending |
 
@@ -280,6 +282,7 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | GitHub Actions run 28 (round four, commit `bc4f137`); runs 25 to 27 | all success |
 | 2026-11-13 | round five audit script (unimported modules, unreferenced names, identical function bodies) | 0 unimported modules, 2 unused names (fixed), 0 duplicate bodies |
 | 2026-11-13 | full suite after the database change (exit status checked); ruff; structure; mypy; resource warnings in the web tests | **811 tests, OK**; clean; OK; 112 pre-existing findings; 0 unclosed connections |
+| 2026-11-13 | `cd tests && python -m unittest test_cli`; full suite (exit status checked); ruff; structure; mypy | 7 tests OK; **818 tests, OK**; clean; OK; 112 pre-existing findings |
 | 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---

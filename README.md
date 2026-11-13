@@ -13,8 +13,33 @@ python -m algoplatform backtest --strategy zscore_reversion --html report.html
 python -m algoplatform optimize --strategy sma_crossover --method bayesian     # also: grid random genetic tpe pso de annealing cmaes
 python -m algoplatform structure    # the job groups, their packages and roles; --check verifies the dependency rules
 python -m algoplatform functions    # every indicator, pattern and operator usable in a formula
+python -m algoplatform web --port 8080 --db-dir ./state                         # the web UI (see below)
 cd tests && python -m unittest discover -p "test_*.py"     # 800+ tests (CI runs Python 3.10-3.13)
 ```
+
+### Command line
+
+`python -m algoplatform <command>` (or `algoplatform <command>` after `pip install -e .`). `--help` on any command lists
+its options.
+
+| Command | What it does |
+|---|---|
+| `strategies` | list the built-in strategies and their parameters |
+| `backtest`, `optimize` | run on `--source sample` (add `--scenario bull_trend` etc., or leave it for a mixed universe), `--source history` (downloaded bars, `--db-dir`), or `--csv SYMBOL=file.csv`; `--html` / `--json` reports; 9 search methods |
+| `demo` | an end-to-end backtest on sample data |
+| `data scenarios` | the eight sample-data scenarios |
+| `data sample` | generate a scenario, print its statistics, `--out DIR` writes one CSV per symbol |
+| `data providers [--test]` | which providers the environment connects (keys never printed); `--test` fetches two weeks of SPY |
+| `data fetch --provider alpaca\|ib --symbols ...` | download history into the library in `--db-dir` (default `./state`, the same directory the web server uses) |
+| `data list`, `data export SYMBOL --out f.csv`, `data remove SYMBOL` | manage the downloaded history |
+| `data sample-only on\|off\|status` | the platform-wide sample-data-only lock, shared with the web server |
+| `structure [--check]`, `functions` | the job groups and dependency rules; the formula catalogue |
+| `web [--host] [--port] [--db-dir]` | start the web UI and JSON API (also `python -m algoplatform.web`) |
+
+Data commands act as the local administrator `cli` through the same platform service as the web pages, so the lock,
+the audit trail and key handling are the same. Provider keys come only from the environment
+(`ALPACA_API_KEY_ID` / `ALPACA_API_SECRET_KEY`, or `IB_HOST` / `IB_PORT` / `IB_CLIENT_ID`). A web server already
+running on the same directory sees new downloads after a restart.
 
 Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structure by job, dependency rules, roles and desks) and
 [`PROGRESS.md`](PROGRESS.md) (what is built, what is verified, what is pending).
@@ -22,8 +47,8 @@ Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structure by jo
 ## Web UI
 
 ```
-PYTHONPATH=src python -m algoplatform.web --port 8080                    # then open http://127.0.0.1:8080
-PYTHONPATH=src python -m algoplatform.web --port 8080 --db-dir ./state   # users, sessions, approvals and alerts survive a restart
+python -m algoplatform web --port 8080                    # then open http://127.0.0.1:8080 (PYTHONPATH=src if not installed)
+python -m algoplatform web --port 8080 --db-dir ./state   # users, sessions, approvals, alerts and downloaded history survive a restart
 ```
 Standard-library server plus a no-build single-page UI (`src/algoplatform/web/`). The menu is grouped by the same
 job groups as the code (`architecture.py`), and each page says which group it belongs to and the question that group

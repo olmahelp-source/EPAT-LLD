@@ -134,7 +134,9 @@ class MarketDataService:
         if name in self._providers:
             return self._providers[name]
         label = PROVIDERS.get(name, {}).get("label", name)
-        raise ValidationError(f"{label} is not connected: operations connects it on the Data providers page", code="PROVIDER_NOT_CONNECTED")
+        env = {"alpaca": "ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY", "ib": "IB_HOST and IB_PORT"}.get(name, "")
+        raise ValidationError(f"{label} is not connected: operations connects it on the Data providers page"
+                              + (f", or set {env} before starting" if env else ""), code="PROVIDER_NOT_CONNECTED")
 
     def test(self, user: User, name: str, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Fetch the last two weeks of one liquid symbol, to prove the connection and the keys work."""

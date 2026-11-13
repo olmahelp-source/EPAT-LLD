@@ -15,7 +15,7 @@ llm = ["anthropic"]                 # only for sentiment.anthropic_completer; no
 ib = ["ib_async"]                   # only for data.IBClient (Interactive Brokers history through TWS / IB Gateway)
 
 [project.scripts]
-algoplatform = "algoplatform.app.cli:main"
+algoplatform = "algoplatform.__main__:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
