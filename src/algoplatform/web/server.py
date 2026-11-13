@@ -45,7 +45,7 @@ from .. import fundamentals as _fundamentals, sentiment as _sentiment  # noqa: F
 from ..strategy.base import STRATEGIES
 from ..utils.timeutils import SimClock
 from ..users.manager import User, UserManager
-from . import quant_api
+from . import desk_api, quant_api, research_api
 from .quant_api import session_metrics
 
 log = get_logger(__name__)
@@ -53,6 +53,23 @@ STATIC = os.path.join(os.path.dirname(__file__), "static")
 MAX_BODY = 1_000_000
 NEEDS_DATA = {"factor_ls", "sentiment"}          # need a fundamentals store / news feed: not runnable from the UI
 SLOW = {"ml_logistic"}                            # retrains repeatedly: keep optimisation small
+
+
+def _pop(n: int, cap: int, minimum: int) -> int:
+    return max(minimum, min(cap, n // 3))
+
+
+# method -> settings giving about ``n`` backtests for a search over ``dim`` parameters
+OPTIMIZERS: Dict[str, Callable[[int, int], Dict[str, Any]]] = {
+    "random": lambda n, d: {"n_iter": n},
+    "genetic": lambda n, d: {"population": max(6, n // 4), "generations": 4},
+    "bayesian": lambda n, d: {"n_init": _pop(n, 10, 2), "n_iter": max(n, _pop(n, 10, 2) + 1), "candidates": 300},
+    "tpe": lambda n, d: {"n_init": _pop(n, 15, 4), "n_iter": max(n, _pop(n, 15, 4) + 1)},
+    "pso": lambda n, d: {"particles": _pop(n, 12, 3), "iterations": max(1, n // _pop(n, 12, 3))},
+    "de": lambda n, d: {"population": _pop(n, 15, 4), "generations": max(1, n // _pop(n, 15, 4) - 1)},
+    "annealing": lambda n, d: {"n_iter": max(10, n)},
+    "cmaes": lambda n, d: {"generations": max(1, n // (4 + int(3 * math.log(max(d, 1)))))},
+}
 ALGO_NAMES = {"twap", "vwap", "pov", "iceberg", "is"}
 MAX_UPLOAD_ROWS, MAX_UPLOAD_SYMBOLS = 5000, 10
 _STATUS = ((AuthenticationError, 401), (AuthorizationError, 403), (UserError, 409), (RiskError, 409), (OrderError, 409),
@@ -161,6 +178,8 @@ class App:
         self.routes: Dict[Tuple[str, str], Tuple[Callable, bool]] = {}
         self._register()
         quant_api.register(self)
+        research_api.register(self)
+        desk_api.register(self)
 
     def _watch(self, sess: "LiveSession") -> "LiveSession":
         """Evaluate the platform's alert rules against this session after every simulated bar."""
@@ -252,7 +271,7 @@ class App:
         if body.get("dataset") == "uploaded":
             frames = self.datasets.get(user.user_id, {}) if user else {}
             if not frames:
-                raise ValidationError("no uploaded data: upload at least one CSV in the Data tab")
+                raise ValidationError("no uploaded data: upload at least one CSV on the Price data page")
             wanted = [s.strip().upper() for s in body.get("symbols") or frames if s.strip()]
             missing = [s for s in wanted if s not in frames]
             if missing:
@@ -352,8 +371,8 @@ class App:
         @r("POST", "/api/optimize")
         def optimize(u, b):
             method = b.get("method", "random")
-            if method not in ("random", "genetic"):
-                raise ValidationError("method must be random or genetic")
+            if method not in OPTIMIZERS:
+                raise ValidationError(f"method must be one of {sorted(OPTIMIZERS)}")
             n = int(b.get("n_iter", 20))
             if not 5 <= n <= 60:
                 raise ValidationError("n_iter must be between 5 and 60")
@@ -368,7 +387,7 @@ class App:
             if not cls.PARAM_BOUNDS:
                 raise ValidationError("strategy has no tunable parameters")
             space = ParameterSpace.from_bounds(cls.PARAM_BOUNDS)
-            kw = {"n_iter": n} if method == "random" else {"population": max(6, n // 4), "generations": 4}
+            kw = OPTIMIZERS[method](n, len(space.names))
             res = P.optimize(u, b["strategy"], md, space, symbols, b.get("metric", "sharpe"), method, **kw)
             top = res.top(10)
             return {"summary": res.summary(), "top": top.to_dict("records"),
@@ -618,8 +637,8 @@ class App:
         # ---- admin ---------------------------------------------------------------------------
         @r("GET", "/api/audit")
         def audit(u, _b):
-            if not (u.has(Permission.MANAGE_USERS) or u.has(Permission.MANAGE_RISK)):
-                raise AuthorizationError("audit log needs admin or risk-manager role")
+            if not u.has(Permission.VIEW_AUDIT):                  # the compliance desk: auditor, risk manager, admin
+                raise AuthorizationError("the audit log needs the auditor, risk-manager or admin role")
             return list(reversed(P.audit.entries()[-150:]))
 
         @r("GET", "/api/users")

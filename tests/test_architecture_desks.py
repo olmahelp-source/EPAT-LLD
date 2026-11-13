@@ -296,7 +296,7 @@ class ControlDeskTests(DeskTestCase):
         report = desk.load_instruments([{"symbol": "AAA", "sector": "Tech"}, {"symbol": "BAD", "tick_size": "-1"}])
         self.assertEqual((report["loaded"], len(report["rejected"])), (1, 1))
         self.assertIn("AAA", self.p.instruments)
-        self.assertEqual(self.p.audit.entries("instruments.load")[0]["details"], {"loaded": 1, "rejected": 1})
+        self.assertEqual(self.p.audit.entries("instruments.load")[0]["details"], {"loaded": 1, "rejected": 1, "overwrite": False})
 
         class Down(MemoryChannel):
             fail = True

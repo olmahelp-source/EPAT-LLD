@@ -206,10 +206,12 @@ class OperationsDesk(Desk):
         ok, failed = self.platform.notifier.replay_dead_letters()
         return self._saved({"delivered": ok, "still_failing": failed})
 
-    def load_instruments(self, records: Sequence[Mapping[str, Any]], on_error: str = "skip") -> Dict[str, Any]:
+    def load_instruments(self, records: Sequence[Mapping[str, Any]], on_error: str = "skip", overwrite: bool = False) -> Dict[str, Any]:
+        """Load contract specs. ``overwrite``: a row for a symbol already in the master replaces it (to correct a spec);
+        without it such a row is rejected, so a careless re-load cannot silently change live terms."""
         self._need(Permission.MANAGE_INSTRUMENTS)
-        report = self.platform.instruments.load_records(records, on_error=on_error)
-        self._audit("instruments.load", loaded=report["loaded"], rejected=len(report["rejected"]))
+        report = self.platform.instruments.load_records(records, overwrite=overwrite, on_error=on_error)
+        self._audit("instruments.load", loaded=report["loaded"], rejected=len(report["rejected"]), overwrite=overwrite)
         return self._saved(report)
 
     def jobs(self) -> List[Dict[str, Any]]:

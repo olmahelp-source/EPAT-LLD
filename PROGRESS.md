@@ -3,12 +3,13 @@
 This file is the single source of truth for what has been built, what has been verified, and what is still pending.
 It is updated at the end of every unit of work. Rules for keeping it honest are in [`CLAUDE.md`](CLAUDE.md).
 
-**Last updated:** 2026-11-13, after the second round of pending tasks
+**Last updated:** 2026-11-13, after round three (web UI regrouped by job group)
 **Working branch:** `ccr-b7d3820c-a4gug7`
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
 **Merge state.** Pull request #2 merged the first part of this work (all source and tests up to that point). Everything
-after it is on the working branch, which already contains the default branch, and is proposed in pull request #3.
+after it is on the working branch, which already contains the default branch, and is proposed in pull request #3
+(round three was pushed to the same branch, so it is part of that pull request too).
 
 ---
 
@@ -18,12 +19,12 @@ after it is on the working branch, which already contains the default branch, an
 |---|---|
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
-| Size of the work | 75 new source files and 23 modified ones (about 12,300 lines of source, 5,100 lines of tests), on top of the original platform. |
-| Whole test-suite | **757 tests pass** (407 original + 350 new), with deprecation warnings treated as errors. |
+| Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
+| Whole test-suite | **773 tests pass** (407 original + 366 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
-| Type checker (`mypy`) | **No findings in the files added by this work.** 113 findings remain in files that predate it (the CI job stays informational). |
-| Web UI | **Done.** Six new tabs, checked in a headless browser as five different roles. |
+| Type checker (`mypy`) | **No findings in the files added by this work.** 112 findings remain in files that predate it (the CI job stays informational). |
+| Web UI | **Done, grouped by job.** The menu follows the 12 job groups of `architecture.py` (titles come from the server); 24 pages, 9 of them new in round three; every group except Foundation has a page. Checked in a headless browser as all eight roles, on desktop and phone width. |
 | Restart safety of the shared services | **Done.** |
 | Example scripts | All three run. |
 | CI on GitHub | Passed (lint and tests on Python 3.10 to 3.13) for every pushed commit since the lint fixes; see section 7. |
@@ -98,7 +99,8 @@ repository.
 | - | Multi-currency accounting (from the gap analysis) | `portfolio/currency.py`: point-in-time FX rates with cross rates, cash per currency, exposure, FX P&L attribution, hedge amounts | done | passing (`test_margin_currency_orderbook`) |
 | - | Order book and tick simulation (from the gap analysis) | `brokers/orderbook.py`: matching engine, queue position, cost to trade, seeded simulator with latency, tick-to-bar | done | passing (`test_margin_currency_orderbook`) |
 | - | Restart safety of the shared services | `save_state` / `load_state` / autosave in `app/platform.py`; `export_state` / `import_state` on each service | done | passing (`test_state_persistence`, `test_web_quant`) |
-| - | Web UI for the new features | `web/quant_api.py`, six tabs in `web/static/app.js` | done | passing (`test_web_quant`); browser walkthrough |
+| - | Web UI for the new features | `web/quant_api.py`, six pages in `web/static/app.js` | done | passing (`test_web_quant`); browser walkthrough |
+| - | Web UI grouped by job (round three) | `web/static/app.js` (menu by job group, hash routing, Home), `web/research_api.py` (option chain, sentiment, prediction models, regimes), `web/desk_api.py` (instruments, margin, currency, order book, health), 8 optimiser methods, audit log on the compliance permission | done | passing (`test_web_groups`); browser walkthrough as 8 roles |
 
 ---
 
@@ -151,7 +153,7 @@ Each package also has an `__init__.py` that exports its public names.
 
 ### New files in existing packages
 
-`risk/margin.py`, `portfolio/currency.py`, `brokers/orderbook.py`, `web/quant_api.py` (round two);
+`web/research_api.py`, `web/desk_api.py` (round three); `risk/margin.py`, `portfolio/currency.py`, `brokers/orderbook.py`, `web/quant_api.py` (round two);
 `utils/resilience.py`, `utils/numeric.py`, `derivatives/chain.py`, `optimize/advanced.py`, `analytics/evaluation.py`,
 `sentiment/llm.py`, `strategy/expression.py`, `strategy/policy.py`, `app/workspaces.py`, and the top-level
 `architecture.py`.
@@ -163,7 +165,7 @@ Each package also has an `__init__.py` that exports its public names.
 `sentiment/__init__.py`, `analytics/__init__.py`, `optimize/__init__.py`, `optimize/optimizers.py` (dispatcher knows the
 new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py` (new shared services, `desk()` /
 `desks()`), `app/__init__.py`, `app/cli.py` (`structure` and `functions` commands, new optimiser names),
-`web/static/app.js` (role list), `algoplatform/__init__.py` (version 0.2.0).
+`web/static/app.js` and `web/static/styles.css` (rebuilt around the job groups in round three), `web/server.py` (registers the new route files, optimiser methods, audit permission), `architecture.py` (web allow-list), `app/workspaces.py` (`load_instruments(overwrite=...)`), `algoplatform/__init__.py` (version 0.2.0).
 
 ### Other new or changed files
 
@@ -186,7 +188,8 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_margin_currency_orderbook.py` | 39 | passing |
 | `tests/test_state_persistence.py` | 19 | passing |
 | `tests/test_web_quant.py` | 15 | passing |
-| **Total** | **757** | **passing** |
+| `tests/test_web_groups.py` (menu follows the structure and the server; new routes) | 16 | passing |
+| **Total** | **773** | **passing** |
 
 ---
 
@@ -203,6 +206,11 @@ Round two completed every pending item that can be done from this environment. W
 
 Done in round two (previously pending): web UI for the new features; persistence of the new shared services; type
 findings in new files; margin model; multi-currency accounting; order-book and tick simulator; documentation.
+
+Done in round three (requested: "update the frontend as per the new structure"): the menu is grouped by job group;
+pages added for the groups and features that had none (instruments, news sentiment, option chain, prediction models,
+regimes and change points, margin, currency exposure, order-book simulator, health and jobs, audit log, users and
+roles, Home); all eight optimiser methods on the Optimise page.
 
 ---
 
@@ -227,6 +235,10 @@ findings in new files; margin model; multi-currency accounting; order-book and t
 | 2026-11-13 | `python -m mypy src/algoplatform` | 0 findings in new files; 113 in pre-existing files |
 | 2026-11-13 | `python -m ruff check .`; `python -m algoplatform structure --check` | clean; dependency rules OK |
 | 2026-11-13 | headless browser (Playwright) against a live server: quant, trader, portfolio manager, risk manager, viewer | every new tab loads and works; tabs hidden from roles that cannot use them; a personal alert fired into the trader's inbox; the trader could not acknowledge a kill-switch alert, the risk manager could; no layout overflow at phone width; no JavaScript errors |
+| 2026-11-13 | `cd tests && python -m unittest test_web_groups` | 16 tests, OK |
+| 2026-11-13 | full suite with deprecation warnings as errors (exit status checked) | **773 tests, OK** |
+| 2026-11-13 | `python -m ruff check .`; `python -m algoplatform structure --check`; `python -m mypy src/algoplatform` | clean; dependency rules OK; 0 findings in new files, 112 in pre-existing files |
+| 2026-11-13 | headless browser against a live server with `--db-dir`, all eight roles, desktop and 390 px phone width | each role's menu holds exactly its pages; every page's main action works (option chain, sentiment, 7 models, regimes, margin from entered and from paper positions, currency, order book, instrument load, health, audit filter, Bayesian optimisation); a forbidden deep link falls back to Home; phone menu opens and closes; no page wider than the screen; no "null", "undefined" or "NaN" on any page; no JavaScript errors; loaded instruments still there after a server restart |
 
 ---
 
@@ -249,6 +261,16 @@ Found in round two:
 - The Paper trading and research tabs were shown to roles that cannot use them (a viewer saw Backtest).
 - A web test assumed an exact catalogue size; it was committed once with that failure because a chained shell
   command did not stop on it. Fixed in the next commit; the full suite's exit status is now checked before committing.
+
+Found in round three:
+
+- The Paper trading page printed the word "null" under the algo-order table when there was no cost summary, and the
+  Strategy approvals page did the same when no decision had been made yet (`replaceChildren(null)` writes "null").
+- The audit-log route required the admin or risk-manager role, so an auditor (who has `audit:view` and the compliance
+  desk) could not read it. It now follows `audit:view`.
+- Re-loading a corrected instrument was always rejected as a duplicate, with no way to replace it. The operations desk
+  now takes `overwrite`, recorded in the audit entry; without it a duplicate is still refused.
+- The option-chain route treated an empty list of expiries as "use the defaults"; it is now refused.
 
 Found during development, before the tests were written:
 
@@ -277,3 +299,6 @@ that a 90% interval always contains zero for one random sample).
 - The order-book simulator's background flow is random; the engine and backtester still run on bars.
 - After a restart, channels holding secrets, fitted model objects and alert rules written as code must be supplied
   again; the restore report lists them.
+- The web UI's research pages run on synthetic prices (or uploaded CSVs) and a synthetic option chain; the
+  news-sentiment page uses the word list and event rules, not the language-model scorer; prediction-model results are
+  gross of costs.

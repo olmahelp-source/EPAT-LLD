@@ -49,11 +49,15 @@ def register(app: Any) -> None:
         return md.frame(symbols[0]), symbols[0], md, symbols
 
     # ---- platform map -------------------------------------------------------------------------------------------------
+    violations: List[List[str]] = []                              # the source does not change while the server runs: scan once
+
     @r("GET", "/api/structure")
     def structure(u, _b):
+        if not violations:
+            violations.append(check_architecture())
         return {"role": u.role, "desks": sorted(P.desks(u)),
-                "groups": [{"title": g.title, "job": g.job, "packages": list(g.packages), "roles": [x.value for x in g.roles]} for g in GROUPS],
-                "violations": check_architecture()}
+                "groups": [{"key": g.key, "title": g.title, "job": g.job, "packages": list(g.packages), "roles": [x.value for x in g.roles]} for g in GROUPS],
+                "violations": violations[0]}
 
     @r("GET", "/api/functions")
     def functions(_u, _b):

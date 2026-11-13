@@ -13,7 +13,7 @@ python -m algoplatform backtest --strategy zscore_reversion --html report.html
 python -m algoplatform optimize --strategy sma_crossover --method bayesian     # also: grid random genetic tpe pso de annealing cmaes
 python -m algoplatform structure    # the job groups, their packages and roles; --check verifies the dependency rules
 python -m algoplatform functions    # every indicator, pattern and operator usable in a formula
-cd tests && python -m unittest discover -p "test_*.py"     # 750+ tests (CI runs Python 3.10-3.13)
+cd tests && python -m unittest discover -p "test_*.py"     # 770+ tests (CI runs Python 3.10-3.13)
 ```
 
 Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structure by job, dependency rules, roles and desks) and
@@ -25,28 +25,34 @@ Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structure by jo
 PYTHONPATH=src python -m algoplatform.web --port 8080                    # then open http://127.0.0.1:8080
 PYTHONPATH=src python -m algoplatform.web --port 8080 --db-dir ./state   # users, sessions, approvals and alerts survive a restart
 ```
-Standard-library server plus a no-build single-page UI (`src/algoplatform/web/`). Tabs:
+Standard-library server plus a no-build single-page UI (`src/algoplatform/web/`). The menu is grouped by the same
+job groups as the code (`architecture.py`), and each page says which group it belongs to and the question that group
+answers:
 
-- **Backtest**: any runnable strategy (including the ML one) on synthetic data or your own CSV; equity vs buy-and-hold, drawdown, metrics, trades, VaR / expected shortfall.
-- **Strategy builder**: indicators and rules as a form, validated server-side.
-- **Optimise** and **Walk-forward**: random/genetic search with a plateau score; rolling out-of-sample testing with stitched equity, walk-forward efficiency and parameter stability.
-- **Portfolio**: several strategies on shared capital (opposing views net out), standalone vs combined results, contribution, correlation, and suggested allocations you can apply with one click.
-- **Data**: upload OHLCV CSVs (validated, capped, private to you).
-- **Paper trading**: simulated broker on a synthetic feed with simulated time. Order ticket with optional execution algos (TWAP, VWAP, POV, iceberg, implementation shortfall), per-order cancel, parent-order cost analysis, positions, VaR and stress tests, risk meters, kill switch. Updates are pushed over Server-Sent Events, and the controls are not redrawn, so typing is never interrupted.
-- **Technical lab**: run a formula over the whole history (any of the 118 catalogue functions), see the chart patterns and candlesticks found, support and resistance levels, and a searchable function reference.
-- **Volatility**: five estimators, a volatility cone, an out-of-sample league of forecasting models, and the exposure multiplier for a volatility target.
-- **Selection**: rank a universe by any blend of rankers with a correlation limit; scores, the reason each instrument was left out, cointegrated pairs, lead-lag and the effective number of bets.
-- **Governance**: register a strategy, score it, propose it for paper or live; approvers see pending requests with the scorecard and approve, reject or demote. The submitter can never approve.
-- **Alerts & inbox**: personal and firm-wide alert rules checked after every paper-trading bar, your own notifications, platform notifications, and unacknowledged critical alerts that a risk manager or operations user must acknowledge.
-- **Admin & audit**: audit log, role management.
-- **Platform map**: your role and desks, the job groups and packages, and whether the dependency rules hold.
+| Job group | Pages |
+|---|---|
+| Access control | **Users and roles**: change a user's role. |
+| Market and reference data | **Price data**: upload OHLCV CSVs (validated, capped, private to you). **Instruments**: the instrument master; operations loads contract specs (tick, lot, multiplier, expiry, broker symbols) from CSV. |
+| Signal libraries | **Technical lab**: run a formula over the whole history (any catalogue function), chart patterns, candlesticks, support and resistance, function reference. **News sentiment**: score headlines (word list with negation plus event rules) and group them by instrument. |
+| Quantitative research | **Volatility**: five estimators, a volatility cone, an out-of-sample model league, the exposure multiplier for a target. **Option chain**: implied volatility and Greeks, smile, skew, term structure, expected move, open-interest walls, dealer gamma, quote checks (synthetic chain). |
+| Learning and AI | **Prediction models**: walk-forward prediction with seven models (logistic to neural network), hit rate, AUC, information coefficient, and the predictions traded. **Regimes and change points**: hidden Markov regimes, Bayesian change points, anomalous days. |
+| Strategy | **Strategy builder**: indicators and rules as a form. **Instrument selection**: blend rankers with a correlation limit; reasons for every exclusion, cointegrated pairs, lead-lag. |
+| Portfolio and risk | **Multi-strategy portfolio**: strategies on shared capital, contribution, correlation, suggested allocations. **Margin**: rule-based and scenario margin side by side, for positions you enter or your paper-trading positions. **Currency exposure**: value by currency, forward hedges, FX attribution. |
+| Trading | **Paper trading**: simulated broker, order ticket with execution algos, cost analysis, VaR and stress tests, kill switch, live updates. **Order-book simulator**: one order into a simulated book, with and without latency, on the same random tape. |
+| Validation | **Backtest**, **Optimise** (random, genetic, Bayesian, TPE, particle swarm, differential evolution, annealing, CMA-ES; plateau score) and **Walk-forward** (stitched out-of-sample equity, efficiency, parameter stability). |
+| Operations and control | **Strategy approvals** (research to paper to live, four-eyes), **Alerts and inbox**, **Health and jobs** (checks, scheduled jobs, undelivered notifications, what was restored at start-up), **Audit log**. |
+| Application | **Home**: your role and desks, the groups you work in, and the whole platform map. |
 
-Each role sees only the tabs it can use: research tabs need `backtest:run`, paper trading needs `order:place`, so a viewer or auditor sees governance, alerts and the map only.
+Each role sees only the pages it can use: a quant gets research, learning and validation; a trader gets paper trading
+but not model training; operations gets instruments and health; an auditor or viewer gets the read-only pages. The
+server checks the same permission on every request, and a test fails if the menu and the server ever disagree.
+Pages have their own addresses (`#/margin`, `#/options`, ...), so the back button and bookmarks work; a page a role
+cannot open falls back to Home.
 
-- The first account created becomes the administrator; later sign-ups are traders. Raise roles in the Admin tab (a Risk Manager or Admin is needed to reset a tripped kill switch).
+- The first account created becomes the administrator; later sign-ups are traders. Raise roles on the Users and roles page (a Risk Manager or Admin is needed to reset a tripped kill switch).
 - Every call goes through `TradingPlatform`, so permissions are enforced server-side, not just hidden in the UI. Server text is rendered with `textContent` only, responses carry CSP and no-sniff headers, and the stream authenticates with a header (never a URL token).
 - **Localhost only.** There is no TLS. Do not expose it to a network without a TLS reverse proxy and your own auth in front. Uploaded data lives in server memory.
-- API: see `web/server.py` (`/api/backtest|optimize|walkforward|portfolio|data/*|session/*|audit|users/*`) and `web/quant_api.py` (`/api/lab/*|governance/*|inbox/*|alerts/*|structure|functions`).
+- API: see `web/server.py` (`/api/backtest|optimize|walkforward|portfolio|data/*|session/*|audit|users/*`), `web/quant_api.py` (`/api/lab/technical|volatility|select`, `governance/*`, `inbox/*`, `alerts/*`, `structure`, `functions`), `web/research_api.py` (`/api/lab/option_chain|sentiment|models|regimes`) and `web/desk_api.py` (`/api/instruments*`, `/api/risk/margin|currency`, `/api/trading/orderbook`, `/api/ops/*`).
 
 ## Architecture
 
@@ -290,11 +296,11 @@ engine = plat.open_session(trader, acc.account_id, [(SMACrossover(["AAA"]), 1.0)
 - **Chart patterns** are rule-based detections on confirmed swings. The thresholds are parameters, not calibrated truths, and a detected pattern is a description, not a forecast.
 - **Cointegration, lead-lag and formula searches test many candidates.** Results carry the number tested and the false positives expected by chance; treat them as candidates to validate.
 - **Fundamentals and sentiment** ship the models and the point-in-time handling, not data feeds. The sentiment lexicon is deliberately simple and auditable, not a trained language model.
-- **Options** are priced with Black-Scholes, binomial trees, Monte Carlo and SVI, with Greeks and expiry settlement helpers. `OptionChain` analyses quotes you supply; there is no option-chain data feed, margin model, or live assignment/exercise management.
+- **Options** are priced with Black-Scholes, binomial trees, Monte Carlo and SVI, with Greeks and expiry settlement helpers. `OptionChain` analyses quotes you supply; there is no option-chain data feed or live assignment/exercise management, and the web page's chain is synthetic.
 - **Margin** follows the two standard methods (fixed percentages, and a scenario grid that revalues each underlying's positions together), but its parameters are typical defaults, not any exchange's or broker's schedule. Load the real numbers before using it for live sizing.
 - **Multi-currency** accounting sits beside the position ledger: `Portfolio` keeps one cash figure and each position in its instrument's own currency; `CashLedger` and `portfolio_currency_exposure` give the per-currency view. The engine does not convert P&L automatically.
 - **Parallel search** works for registry or rule-spec strategies through `make_parallel_objective`; walk-forward is still serial.
-- **The web UI is for localhost.** No TLS; uploaded data lives in server memory. Alert rules are evaluated against the paper-trading session that is stepping, so with several users trading at once a firm-wide metric alert sees whichever session moved last.
+- **The web UI is for localhost.** No TLS; uploaded data lives in server memory. Its research pages run on synthetic prices (or your uploaded CSVs) and a synthetic option chain; the news-sentiment page uses the word list and event rules, not the language-model scorer; prediction-model results are gross of costs. Alert rules are evaluated against the paper-trading session that is stepping, so with several users trading at once a firm-wide metric alert sees whichever session moved last.
 - **What a restart keeps.** With a store, notification channels that hold a secret (webhook URL, bot token, e-mail password) are deliberately not written to disk and must be registered again; the restore report lists them. Fitted model objects are not pickled: restored registry versions must have their model re-attached, which is checked against the training-data fingerprint. Alert rules defined in code (rather than as thresholds) must be added again.
 - **Backtests use the data you supply.** Synthetic data is for tests and demos and says nothing about real markets. Measured here: about 0.1 s per 1,000 bars per symbol for a simple strategy; model-based and rule-heavy strategies are slower.
 - Research code, not investment advice. Paper trade for an extended period before risking capital.

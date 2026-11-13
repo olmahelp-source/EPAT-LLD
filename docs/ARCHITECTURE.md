@@ -107,7 +107,7 @@ second, slightly different one; `risk` imports `quant` because scenario margin r
 | `ops` | `core`, `utils` |
 | `governance` | `analytics`, `core`, `users`, `utils` |
 | `app` | `analytics`, `backtest`, `brokers`, `core`, `data`, `execution`, `fundamentals`, `governance`, `instruments`, `notify`, `ops`, `optimize`, `orders`, `persistence`, `portfolio`, `quant`, `relationships`, `risk`, `selection`, `sentiment`, `strategy`, `technical`, `users`, `utils` |
-| `web` | `analytics`, `app`, `backtest`, `core`, `data`, `fundamentals`, `notify`, `optimize`, `persistence`, `portfolio`, `relationships`, `risk`, `selection`, `sentiment`, `strategy`, `technical`, `users`, `utils`, `volatility` |
+| `web` | `ai`, `analytics`, `app`, `backtest`, `brokers`, `core`, `data`, `derivatives`, `dl`, `fundamentals`, `ml`, `notify`, `optimize`, `persistence`, `portfolio`, `relationships`, `research`, `risk`, `selection`, `sentiment`, `strategy`, `technical`, `users`, `utils`, `volatility` |
 
 ## 4. One platform, different roles
 
@@ -224,3 +224,30 @@ job) never stops the others, and an error whose action is HALT (kill switch, bad
 | Fitted model objects | **not stored** (no pickling) | re-attach with `ModelRegistry.attach`, checked against the training-data fingerprint |
 | Alert rules written as code | **not stored** | only threshold-style rules can be written down |
 
+## 8. The web UI follows the same structure
+
+The menu of the web UI is grouped by the job groups of section 1, in the same order, and takes each group's title and
+question from `GET /api/structure`, so it cannot drift from `architecture.py`. Every group has at least one page except
+Foundation, which is shared code with nothing to show. A role sees a page only if it holds the permission the page
+needs; the server checks that permission again on every request, and `tests/test_web_groups.py` fails if the menu and
+the server ever disagree for any role.
+
+| Job group | Pages | Needs |
+|---|---|---|
+| Access control | Users and roles | `users:manage` |
+| Market and reference data | Price data · Instruments (operations loads contract specs) | `backtest:run` · `portfolio:view` |
+| Signal libraries | Technical lab · News sentiment | `backtest:run` |
+| Quantitative research | Volatility · Option chain | `backtest:run` |
+| Learning and AI | Prediction models · Regimes and change points | `model:train` · `backtest:run` |
+| Strategy | Strategy builder · Instrument selection | `backtest:run` |
+| Portfolio and risk | Multi-strategy portfolio · Margin · Currency exposure | `backtest:run` · `risk:view` · `portfolio:view` |
+| Trading | Paper trading · Order-book simulator | `order:place` · `backtest:run` |
+| Validation | Backtest · Optimise (8 search methods) · Walk-forward | `backtest:run` |
+| Operations and control | Strategy approvals · Alerts and inbox · Health and jobs · Audit log | `order:view` · `risk:view` · `system:operate` · `audit:view` |
+| Application | Home: your role, desks and groups, and the whole map | everyone |
+
+The routes are split the same way: `web/server.py` (sessions, backtests, data upload, users), `web/quant_api.py`
+(technical lab, volatility, selection, approvals, alerts, structure), `web/research_api.py` (option chain, sentiment,
+prediction models, regimes) and `web/desk_api.py` (instruments, margin, currency, order book, health). To let the web
+layer show each group, its allow-list includes the libraries it displays (`derivatives`, `research`, `ml`, `dl`, `ai`,
+`brokers` for the order-book simulator); the libraries themselves still import nothing from the web or the platform.

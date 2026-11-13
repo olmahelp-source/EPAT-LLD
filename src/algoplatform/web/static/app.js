@@ -27,7 +27,7 @@ function s(tag, attrs) {
 }
 
 // ---------- state & API ----------
-const store = { token: null, me: null };
+const store = { token: null, me: null, structure: null };
 try { store.token = sessionStorage.getItem("token"); } catch (_) { /* private mode */ }
 let toastTimer = null;
 
@@ -154,53 +154,107 @@ function renderLogin() {
 }
 
 function logout(silent) {
-  store.token = null; store.me = null;
+  store.token = null; store.me = null; store.structure = null;
   try { sessionStorage.removeItem("token"); } catch (_) { /* ignore */ }
   stopAuto();
   if (!silent) toast("Signed out");
   mount(renderLogin());
 }
 
-const TABS = [
-  { id: "backtest", label: "Backtest", build: backtestView, perm: ["backtest:run"] },
-  { id: "builder", label: "Strategy builder", build: builderView, perm: ["backtest:run"] },
-  { id: "optimize", label: "Optimise", build: optimizeView, perm: ["backtest:run"] },
-  { id: "walkforward", label: "Walk-forward", build: walkForwardView, perm: ["backtest:run"] },
-  { id: "portfolio", label: "Portfolio", build: portfolioView, perm: ["backtest:run"] },
-  { id: "data", label: "Data", build: dataView, perm: ["backtest:run"] },
-  { id: "live", label: "Paper trading", build: liveView, perm: ["order:place"] },
-  { id: "lab", label: "Technical lab", build: labView, perm: ["backtest:run"] },
-  { id: "vol", label: "Volatility", build: volView, perm: ["backtest:run"] },
-  { id: "select", label: "Selection", build: selectView, perm: ["backtest:run"] },
-  { id: "governance", label: "Governance", build: governanceView, perm: ["order:view"] },
-  { id: "inbox", label: "Alerts & inbox", build: inboxView, perm: ["risk:view"] },
-  { id: "admin", label: "Admin & audit", build: adminView, perm: ["users:manage", "risk:manage"] },
-  { id: "map", label: "Platform map", build: mapView },
+/* Pages grouped by the platform's job groups (architecture.py). Group titles and the question each group answers come
+   from /api/structure, so the navigation follows the code's own structure. `perm`: holding any one of them shows the
+   page; the server checks the permission again on every request, so hiding a page is a convenience, not the control. */
+const PAGES = [
+  { id: "home", group: "application", label: "Home", build: homeView },
+  { id: "data", group: "market_data", label: "Price data", build: dataView, perm: ["backtest:run"] },
+  { id: "instruments", group: "market_data", label: "Instruments", build: instrumentsView, perm: ["portfolio:view"] },
+  { id: "lab", group: "signals", label: "Technical lab", build: labView, perm: ["backtest:run"] },
+  { id: "sentiment", group: "signals", label: "News sentiment", build: sentimentView, perm: ["backtest:run"] },
+  { id: "vol", group: "quant", label: "Volatility", build: volView, perm: ["backtest:run"] },
+  { id: "options", group: "quant", label: "Option chain", build: optionsView, perm: ["backtest:run"] },
+  { id: "models", group: "learning", label: "Prediction models", build: modelsView, perm: ["model:train"] },
+  { id: "regimes", group: "learning", label: "Regimes and change points", build: regimesView, perm: ["backtest:run"] },
+  { id: "builder", group: "strategy", label: "Strategy builder", build: builderView, perm: ["backtest:run"] },
+  { id: "select", group: "strategy", label: "Instrument selection", build: selectView, perm: ["backtest:run"] },
+  { id: "portfolio", group: "capital", label: "Multi-strategy portfolio", build: portfolioView, perm: ["backtest:run"] },
+  { id: "margin", group: "capital", label: "Margin", build: marginView, perm: ["risk:view"] },
+  { id: "currency", group: "capital", label: "Currency exposure", build: currencyView, perm: ["portfolio:view"] },
+  { id: "live", group: "trading", label: "Paper trading", build: liveView, perm: ["order:place"] },
+  { id: "orderbook", group: "trading", label: "Order-book simulator", build: orderbookView, perm: ["backtest:run"] },
+  { id: "backtest", group: "validation", label: "Backtest", build: backtestView, perm: ["backtest:run"] },
+  { id: "optimize", group: "validation", label: "Optimise", build: optimizeView, perm: ["backtest:run"] },
+  { id: "walkforward", group: "validation", label: "Walk-forward", build: walkForwardView, perm: ["backtest:run"] },
+  { id: "governance", group: "operations", label: "Strategy approvals", build: governanceView, perm: ["order:view"] },
+  { id: "inbox", group: "operations", label: "Alerts and inbox", build: inboxView, perm: ["risk:view"] },
+  { id: "health", group: "operations", label: "Health and jobs", build: healthView, perm: ["system:operate"] },
+  { id: "audit", group: "operations", label: "Audit log", build: auditView, perm: ["audit:view"] },
+  { id: "users", group: "access", label: "Users and roles", build: usersView, perm: ["users:manage"] },
 ];
 
 function mount(node) { document.getElementById("root").replaceChildren(node); }
 
-function renderApp() {
+function allowedPages() {
   const perms = store.me.permissions;
-  const tabs = TABS.filter((t) => !t.perm || t.perm.some((p) => perms.includes(p)));
-  const content = h("div");
-  const nav = h("nav", { class: "tabs", role: "tablist" });
-  const select = (t) => {
-    if (t.id !== "live") stopAuto();
-    for (const b of nav.children) b.setAttribute("aria-selected", String(b.dataset.id === t.id));
-    content.replaceChildren(t.build());
-    try { sessionStorage.setItem("tab", t.id); } catch (_) { /* ignore */ }
-  };
-  for (const t of tabs) nav.append(h("button", { role: "tab", "data-id": t.id, "aria-selected": "false", onclick: () => select(t) }, t.label));
-  let saved = "backtest";
-  try { saved = sessionStorage.getItem("tab") || saved; } catch (_) { /* ignore */ }
+  return PAGES.filter((p) => !p.perm || p.perm.some((x) => perms.includes(x)));
+}
+
+/* The job groups the user has at least one page in, in the platform's own order. */
+function groupInfo(key) {
+  const known = (store.structure && store.structure.groups) || [];
+  return known.find((g) => g.key === key) || { key, title: key.replace(/_/g, " "), job: "", roles: [], packages: [] };
+}
+function navGroups(pages) {
+  const order = ((store.structure && store.structure.groups) || []).map((g) => g.key);
+  const rank = (k) => (order.indexOf(k) + 1) || 99;
+  return [...new Set(pages.map((p) => p.group))].sort((a, b) => rank(a) - rank(b))
+    .map((k) => ({ ...groupInfo(k), pages: pages.filter((p) => p.group === k) }));
+}
+
+const shell = { frame: null, pages: [], groups: [], links: new Map(), head: null, content: null, menu: null };
+
+function renderApp() {
+  const pages = allowedPages();
+  const groups = navGroups(pages.filter((p) => p.group !== "application"));
+  const links = new Map();
+  const link = (p) => { const a = h("a", { href: "#/" + p.id, class: "navlink" }, p.label); links.set(p.id, a); return a; };
+  const nav = h("nav", { class: "sidenav", id: "sidenav", "aria-label": "Platform sections" }, link(PAGES[0]),
+    groups.map((g) => h("div", { class: "navgroup" }, h("div", { class: "navgroup-title", title: g.job }, g.title), g.pages.map(link))));
+  const head = h("div", { class: "pagehead" }), content = h("div", { class: "page" });
+  const frame = h("div", { class: "shell" }, nav, h("main", { class: "main" }, head, content));
+  const menu = h("button", { class: "btn ghost menu", type: "button", "aria-controls": "sidenav", "aria-expanded": "false" }, "Menu");
+  menu.addEventListener("click", () => { const open = !frame.classList.contains("nav-open"); frame.classList.toggle("nav-open", open); menu.setAttribute("aria-expanded", String(open)); });
+  Object.assign(shell, { frame, pages, groups, links, head, content, menu });
   mount(h("div", null,
-    h("header", { class: "top" }, h("div", { class: "wrap" }, h("span", { class: "brand" }, "Algo Platform"), h("span", { class: "spacer" }),
+    h("header", { class: "top" }, h("div", { class: "bar" }, menu, h("a", { class: "brand", href: "#/home" }, "Algo Platform"), h("span", { class: "spacer" }),
       h("span", { class: "who" }, store.me.username + " · " + store.me.role),
       h("button", { class: "btn ghost", onclick: () => logout(false) }, "Sign out"))),
-    h("div", { class: "wrap" }, nav, content)));
-  select(tabs.find((t) => t.id === saved) || tabs[0]);
+    frame));
+  showPage();
 }
+
+/* Hash routing (#/page-id): links, the back button and bookmarks all work. An unknown page, or one this role cannot
+   open, falls back to Home. */
+function showPage() {
+  if (!store.me || !shell.frame || !shell.frame.isConnected) return;
+  const id = (location.hash.match(/^#\/([\w-]+)$/) || [])[1];
+  let page = shell.pages.find((p) => p.id === id);
+  if (!page) {
+    page = shell.pages.find((p) => p.id === "home");
+    if (id) history.replaceState(null, "", "#/home");
+  }
+  if (page.id !== "live") stopAuto();
+  for (const [pid, a] of shell.links) { if (pid === page.id) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); }
+  const g = groupInfo(page.group);
+  shell.head.replaceChildren(page.id === "home"
+    ? h("h1", null, "One platform, grouped by job")
+    : h("div", null, h("div", { class: "crumb" }, h("span", null, g.title), h("span", { class: "sep", "aria-hidden": "true" }, "›"), h("h1", null, page.label)),
+      g.job ? h("p", { class: "hint" }, g.job) : null));
+  shell.content.replaceChildren(page.build());
+  shell.frame.classList.remove("nav-open");
+  shell.menu.setAttribute("aria-expanded", "false");
+  document.title = page.label + " · Algo Platform";
+}
+window.addEventListener("hashchange", showPage);
 
 // ----- strategy parameter form -----
 let strategyCache = null;
@@ -387,10 +441,12 @@ function builderView() {
 }
 
 // ----- optimiser -----
+const OPT_METHODS = [["random", "Random search"], ["genetic", "Genetic algorithm"], ["bayesian", "Bayesian (Gaussian process)"], ["tpe", "Tree-structured Parzen (TPE)"],
+  ["pso", "Particle swarm"], ["de", "Differential evolution"], ["annealing", "Simulated annealing"], ["cmaes", "CMA-ES"]];
 function optimizeView() {
   const root = h("div"), results = h("div"), df = dataFields();
   df.bars.value = 500;
-  const sel = h("select"), method = h("select", null, h("option", { value: "random" }, "random"), h("option", { value: "genetic" }, "genetic"));
+  const sel = h("select"), method = h("select", { "aria-label": "search method" }, OPT_METHODS.map(([v, l]) => h("option", { value: v }, l)));
   const n = h("input", { type: "number", value: 20, min: 5, max: 60, style: "width:80px" });
   const metric = h("select", null, ["sharpe", "sortino", "calmar", "total_return", "cagr"].map((x) => h("option", { value: x }, x)));
   const run = h("button", { class: "btn", type: "submit" }, "Optimise");
@@ -410,7 +466,7 @@ function optimizeView() {
       h("div", { class: "card" }, h("h2", null, "Top trials"), table([...keys.map((k) => ({ key: k, label: k })), { key: "score", label: metric.value, render: (v) => fmt.num(v, 3) }], r.top)));
   }); } }, h("h2", null, "Optimise strategy parameters"),
     h("div", { class: "row" }, field("Strategy", sel), field("Method", method), field("Trials", n), field("Objective", metric), ...df.nodes),
-    h("p", { class: "hint" }, "Each trial is a full backtest. Parameter sets that break the strategy's rules are recorded as failed trials rather than aborting the search."),
+    h("p", { class: "hint" }, "Each trial is a full backtest. Parameter sets that break the strategy's rules are recorded as failed trials rather than aborting the search. Random and genetic search ignore what earlier trials found; Bayesian, TPE and CMA-ES use it to choose the next trial, which usually finds a good region in fewer backtests. Population methods may run slightly fewer trials than asked, to fit whole generations."),
     h("div", { style: "margin-top:12px" }, run)), results);
   return root;
 }
@@ -442,7 +498,7 @@ function dataView() {
     await refresh();
   }); } },
     h("h2", null, "Upload your own price data"),
-    h("p", { class: "hint" }, "CSV with a header row and columns date, open, high, low, close and optionally volume (one file per symbol, up to 5,000 rows, 10 symbols). Rows are checked for duplicate dates, gaps in ordering, non-positive prices and impossible highs/lows. Then choose \"Uploaded CSV\" as the data source on the Backtest, Optimise, Walk-forward and Portfolio tabs. Your data stays in server memory and is private to you."),
+    h("p", { class: "hint" }, "CSV with a header row and columns date, open, high, low, close and optionally volume (one file per symbol, up to 5,000 rows, 10 symbols). Rows are checked for duplicate dates, gaps in ordering, non-positive prices and impossible highs/lows. Then choose \"Uploaded CSV\" as the data source on any research or validation page (Backtest, Optimise, Walk-forward, Portfolio, Technical lab and the others). Your data stays in server memory and is private to you."),
     h("div", { class: "row" }, field("File", file), field("Symbol", sym), up, clear)),
     h("div", { class: "card" }, h("h2", null, "Your uploaded data"), listBox));
   return root;
@@ -709,7 +765,7 @@ function renderLive(ui, snap, act) {
       { key: "children", label: "Child orders" }, { key: "slippage_bps", label: "Slippage (bps)", render: (v) => h("span", { class: costCls(v) }, fmt.num(v, 1)) },
       { key: "shortfall_bps", label: "Shortfall incl. fees (bps)", render: (v) => h("span", { class: costCls(v) }, fmt.num(v, 1)) }], parents)
       : h("p", { class: "hint" }, "No algo orders yet. Pick an execution algo in the order ticket."),
-    snap.tca && snap.tca.parents ? h("p", { class: "hint" }, `Average shortfall ${fmt.num(snap.tca.avg_shortfall_bps, 1)} bps over ${snap.tca.parents} algo order(s). Positive means you paid more than the price when the decision was made.`) : null);
+    snap.tca && snap.tca.parents ? h("p", { class: "hint" }, `Average shortfall ${fmt.num(snap.tca.avg_shortfall_bps, 1)} bps over ${snap.tca.parents} algo order(s). Positive means you paid more than the price when the decision was made.`) : "");
 
   ui.orders.replaceChildren(table([{ key: "id", label: "ID", render: (v) => v.slice(-8) }, { key: "symbol", label: "Symbol" }, { key: "side", label: "Side" }, { key: "qty", label: "Qty" },
     { key: "type", label: "Type" }, { key: "status", label: "Status", render: (v) => h("span", { class: "badge " + v }, v) }, { key: "avg", label: "Avg fill", render: (v) => v ? fmt.num(v) : "–" },
@@ -899,7 +955,7 @@ function governanceView() {
       state.strategies, "No strategy registered yet."),
       state.strategies.some((x) => x.history.length) ? h("details", null, h("summary", null, "Decision history"),
         table([{ key: "strategy", label: "Strategy" }, { key: "ts", label: "When", render: when }, { key: "actor", label: "By" }, { key: "action", label: "Action" },
-          { key: "to", label: "Stage" }, { key: "reason", label: "Reason" }], state.strategies.flatMap((x) => x.history.map((e) => ({ strategy: x.strategy_id, ...e }))))) : null);
+          { key: "to", label: "Stage" }, { key: "reason", label: "Reason" }], state.strategies.flatMap((x) => x.history.map((e) => ({ strategy: x.strategy_id, ...e }))))) : "");
     if (!forms.childElementCount) renderForms();          // built once, so a reload keeps what the user typed
   };
   const renderForms = () => {
@@ -990,47 +1046,483 @@ function alertForm(r, reload) {
     note("Drawdown and daily P&L are fractions (0.1 = 10%). A personal alert reaches only you; a firm-wide one goes to the platform inbox and every channel operations has configured."));
 }
 
-// ----- platform map -----
-function mapView() {
-  const root = h("div");
-  api("/api/structure").then((r) => root.replaceChildren(
-    h("div", { class: "kpis" }, kpi("Your role", r.role), kpi("Your desks", r.desks.join(", ") || "none"),
-      kpi("Dependency rules", r.violations.length ? r.violations.length + " violation(s)" : "hold", r.violations.length ? "bad" : "good")),
-    h("div", { class: "card" }, h("h2", null, "One platform, grouped by job"),
+// ----- home: the platform map, from the signed-in user's point of view -----
+function homeView() {
+  const root = h("div"), st = store.structure, role = store.me.role;
+  const pages = shell.pages.filter((p) => p.id !== "home");
+  root.append(h("div", { class: "kpis" }, kpi("Signed in as", store.me.username), kpi("Role", role),
+    kpi("Your desks", st ? (st.desks.join(", ") || "none") : "–"), kpi("Pages you can open", pages.length),
+    st ? kpi("Dependency rules", st.violations.length ? st.violations.length + " violation(s)" : "hold", st.violations.length ? "bad" : "good") : null));
+  const main = (g) => (g.roles || []).includes(role);
+  root.append(h("div", { class: "groupcards" }, [...shell.groups].sort((a, b) => main(b) - main(a)).map((g) => h("section", { class: "card groupcard" + (main(g) ? " main" : "") },
+    h("h2", null, g.title, main(g) ? h("span", { class: "badge" }, "your role's area") : null), h("p", { class: "hint" }, g.job),
+    h("div", { class: "row" }, g.pages.map((p) => h("a", { class: "btn ghost", href: "#/" + p.id }, p.label)))))));
+  if (st) {
+    const screens = (key) => {
+      const all = PAGES.filter((p) => p.group === key && p.id !== "home"), yours = all.filter((p) => shell.links.has(p.id));
+      return key === "application" ? "this web UI" : all.length ? `${yours.length} of ${all.length}` : "none: shared code";
+    };
+    root.append(h("div", { class: "card full" }, h("h2", null, "The whole platform"),
       table([{ key: "title", label: "Job group" }, { key: "job", label: "The question it answers", render: (v) => h("span", { class: "cell-text" }, v) },
-        { key: "packages", label: "Packages", render: (v) => v.join(", ") }, { key: "roles", label: "Main roles", render: (v) => v.join(", ") || "everyone, through desks" }], r.groups),
-      note("Each package may import only what the platform's allow-list says, and a test fails if one reaches further: strategies never see orders or brokers, risk never knows which strategy sent an order, libraries stay pure computation.")),
-    r.violations.length ? h("div", { class: "card" }, h("h2", null, "Violations"), h("p", { class: "code" }, r.violations.join("\n"))) : null)).catch((e) => toast(e.message, true));
+        { key: "packages", label: "Packages", render: (v) => h("span", { class: "cell-text narrow" }, v.join(", ")) },
+        { key: "roles", label: "Main roles", render: (v) => h("span", { class: "cell-text narrow" }, v.join(", ") || "everyone, through desks") },
+        { key: "key", label: "Screens you can open", render: screens }], st.groups),
+      note("Each package may import only what the platform's allow-list says, and a test fails if one reaches further: strategies never see orders or brokers, risk never knows which strategy sent an order, libraries stay pure computation. The menu follows the same groups; a role sees only the pages it may use, and the server checks the permission again on every request.")));
+    if (st.violations.length) root.append(h("div", { class: "card" }, h("h2", null, "Violations"), h("p", { class: "code" }, st.violations.join("\n"))));
+  }
   return root;
 }
 
-// ----- admin -----
-function adminView() {
-  const root = h("div"), perms = store.me.permissions;
-  const auditBox = h("div"), usersBox = h("div");
-  api("/api/audit").then((rows) => auditBox.replaceChildren(table([{ key: "ts", label: "Time", render: (v) => String(v).replace("T", " ").slice(0, 19) }, { key: "actor", label: "Actor" }, { key: "action", label: "Action" },
-    { key: "details", label: "Details", render: (v) => JSON.stringify(v).slice(0, 110) }], rows, "No audit entries."))).catch((e) => auditBox.replaceChildren(h("p", { class: "hint" }, e.message)));
-  root.append(h("div", { class: "card" }, h("h2", null, "Audit log (latest 150)"), auditBox));
-  if (perms.includes("users:manage")) {
-    const load = async () => {
-      const users = await api("/api/users");
-      usersBox.replaceChildren(table([{ key: "username", label: "User" }, { key: "role", label: "Role", render: (v, r) => {
-        const sel = h("select", { "aria-label": "role for " + r.username }, ["TRADER", "QUANT", "PORTFOLIO_MANAGER", "RISK_MANAGER", "OPERATIONS", "AUDITOR", "VIEWER", "ADMIN"].map((x) => h("option", { value: x }, x)));
-        sel.value = v;
-        sel.addEventListener("change", async () => { try { await api("/api/users/role", { user_id: r.id, role: sel.value }); toast("Role updated for " + r.username); } catch (e) { toast(e.message, true); sel.value = v; } });
-        return sel; } }, { key: "active", label: "Active", render: (v) => v ? "yes" : "no" }], users));
-    };
-    load().catch((e) => toast(e.message, true));
-    root.append(h("div", { class: "card" }, h("h2", null, "Users and roles"), usersBox,
-      h("p", { class: "hint" }, "Give a second account the Risk Manager role to try resetting the kill switch. Role changes apply on the user's next request.")));
-  }
+// ----- access control: users and roles -----
+const ROLES = ["TRADER", "QUANT", "PORTFOLIO_MANAGER", "RISK_MANAGER", "OPERATIONS", "AUDITOR", "VIEWER", "ADMIN"];
+function usersView() {
+  const root = h("div"), usersBox = h("div");
+  const load = async () => {
+    const users = await api("/api/users");
+    usersBox.replaceChildren(table([{ key: "username", label: "User" }, { key: "role", label: "Role", render: (v, r) => {
+      const sel = h("select", { "aria-label": "role for " + r.username }, ROLES.map((x) => h("option", { value: x }, x)));
+      sel.value = v;
+      sel.addEventListener("change", async () => { try { await api("/api/users/role", { user_id: r.id, role: sel.value }); toast("Role updated for " + r.username); } catch (e) { toast(e.message, true); sel.value = v; } });
+      return sel; } }, { key: "active", label: "Active", render: (v) => v ? "yes" : "no" }], users));
+  };
+  load().catch((e) => toast(e.message, true));
+  root.append(h("div", { class: "card" }, h("h2", null, "Users and roles"), usersBox,
+    note("A role decides which desks and pages a user gets. Give a second account the Risk Manager role to try resetting the kill switch, or the Portfolio Manager role to approve a strategy someone else proposed. Role changes apply on the user's next request.")));
+  return root;
+}
+
+// ----- operations: audit log -----
+function auditView() {
+  const root = h("div"), box = h("div"), filter = h("input", { placeholder: "filter by actor or action", "aria-label": "filter audit log", style: "min-width:220px" });
+  let rows = [];
+  const draw = () => {
+    const q = filter.value.trim().toLowerCase();
+    box.replaceChildren(table([{ key: "ts", label: "Time", render: (v) => String(v).replace("T", " ").slice(0, 19) }, { key: "actor", label: "Actor" }, { key: "action", label: "Action" },
+      { key: "details", label: "Details", render: (v) => h("span", { class: "cell-text" }, JSON.stringify(v).slice(0, 160)) }],
+      q ? rows.filter((r) => (r.actor + " " + r.action).toLowerCase().includes(q)) : rows, rows.length ? "No entry matches." : "No audit entries."));
+  };
+  filter.addEventListener("input", draw);
+  api("/api/audit").then((r) => { rows = r; draw(); }).catch((e) => box.replaceChildren(note(e.message)));
+  root.append(h("div", { class: "card" }, h("h2", null, "Audit log (latest 150)"), h("div", { class: "row" }, filter), box,
+    note("Every sign-in, order, approval, role change and alert change is recorded with who did it. Auditors and risk managers can read it; nobody can edit it from here.")));
+  return root;
+}
+
+// ----- shared: an editable list of rows (positions, holdings, rates) -----
+/* fields: [{key, label, type?: "number", options?: [...], def?, width?}]. onRow(row) runs for each new row. */
+function rowsEditor(fields, initial, addLabel, onRow) {
+  const box = h("div");
+  const add = (vals = {}) => {
+    const inputs = {};
+    const cells = fields.map((f) => {
+      const inp = f.options ? h("select", { "aria-label": f.label }, f.options.map((o) => h("option", { value: o }, o)))
+        : h("input", { type: f.type || "text", step: "any", "aria-label": f.label, style: `width:${f.width || 100}px` });
+      inp.value = vals[f.key] ?? f.def ?? "";
+      inputs[f.key] = inp;
+      return field(f.label, inp);
+    });
+    const row = h("div", { class: "row editrow" }, cells, h("button", { class: "btn ghost", type: "button", "aria-label": "remove row", onclick: () => row.remove() }, "✕"));
+    row.inputs = inputs;
+    row.get = () => Object.fromEntries(fields.map((f) => {
+      const v = inputs[f.key].value.trim();
+      return [f.key, f.type === "number" ? (v === "" ? null : Number(v)) : v];
+    }));
+    box.append(row);
+    if (onRow) onRow(row);
+    return row;
+  };
+  initial.forEach(add);
+  return { box, add, get: () => [...box.children].map((r) => r.get()),
+    node: h("div", null, box, h("button", { class: "btn ghost", type: "button", onclick: () => add() }, addLabel || "+ Add row")) };
+}
+const yesNo = (v) => v ? h("span", { class: "bad" }, "yes") : h("span", { class: "good" }, "no");
+const bps = (v) => v == null ? "–" : fmt.num(v, 1) + " bps";
+
+// ----- market and reference data: instruments -----
+const SAMPLE_INSTRUMENTS = [
+  "symbol,asset_class,name,exchange,currency,tick_size,lot_size,multiplier,sector,underlying,expiry,strike,right,margin_pct,broker:paper",
+  "AAA,equity,Alpha Industries,NYSE,USD,0.01,1,1,Industrials,,,,,1,AAA.N",
+  "BBB,equity,Bolt Motors,NASDAQ,USD,0.01,1,1,Consumer,,,,,1,BBB.O",
+  "CCC,equity,Cedar Bank,LSE,GBP,0.5,1,1,Financials,,,,,1,CCC.L",
+  "ESZ6,future,E-mini S&P 500 Dec 2026,CME,USD,0.25,1,50,,ES,2026-12-18,,,0.06,ESZ6",
+  "AAA261218C160,option,AAA Dec 2026 160 call,CBOE,USD,0.01,1,100,,AAA,2026-12-18,160,call,1,",
+].join("\n");
+
+function instrumentsView() {
+  const root = h("div"), listBox = h("div"), count = h("span", { class: "muted" });
+  const search = h("input", { placeholder: "filter by symbol, name, sector", "aria-label": "filter instruments", style: "min-width:220px" });
+  let rows = [];
+  const cols = [{ key: "symbol", label: "Symbol" }, { key: "asset_class", label: "Class" }, { key: "name", label: "Name", render: (v) => h("span", { class: "cell-text" }, v || "") },
+    { key: "exchange", label: "Exchange" }, { key: "currency", label: "Ccy" }, { key: "tick_size", label: "Tick" }, { key: "lot_size", label: "Lot" },
+    { key: "multiplier", label: "Multiplier" }, { key: "sector", label: "Sector" }, { key: "underlying", label: "Underlying" }, { key: "expiry", label: "Expiry" },
+    { key: "strike", label: "Strike" }, { key: "right", label: "Right" },
+    { key: "broker_symbols", label: "Broker symbols", render: (v) => Object.entries(v || {}).map(([b, x]) => b + ": " + x).join(", ") || "–" }];
+  const draw = () => {
+    const q = search.value.trim().toLowerCase();
+    const shown = q ? rows.filter((r) => [r.symbol, r.name, r.sector, r.exchange, r.asset_class, r.underlying].some((v) => String(v || "").toLowerCase().includes(q))) : rows;
+    listBox.replaceChildren(table(cols, shown, rows.length ? "No instrument matches." : "The instrument master is empty. Operations loads it from a CSV of contract specifications."));
+  };
+  search.addEventListener("input", draw);
+  const csv = h("textarea", { "aria-label": "instrument CSV", rows: 7 }, SAMPLE_INSTRUMENTS);
+  const loadBtn = h("button", { class: "btn", type: "submit" }, "Load instruments");
+  const replace = h("input", { type: "checkbox", "aria-label": "replace instruments that already exist" });
+  const report = h("div");
+  const form = h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(loadBtn, async () => {
+    const r = await api("/api/instruments/load", { csv: csv.value, overwrite: replace.checked });
+    toast(`Loaded ${r.loaded}, rejected ${r.rejected.length}`, r.rejected.length > 0);
+    report.replaceChildren(r.rejected.length ? table([{ key: "item", label: "Row" }, { key: "error", label: "Why it was rejected", render: (v) => h("span", { class: "cell-text" }, v) }], r.rejected) : note("Every row loaded."));
+    await load();
+  }); } }, h("h2", null, "Load contract specifications"), csv,
+    h("div", { class: "row", style: "margin-top:10px; align-items:center" }, loadBtn, h("label", { class: "check" }, replace, "Replace instruments that already exist")),
+    note("One row per instrument. Futures and options need an underlying and an expiry; options also a strike and a right. Columns named broker:<name> map the platform symbol to that broker's own symbol. A symbol that is already in the master is rejected unless you tick Replace, so a careless re-load cannot change contract terms. Bad rows are rejected one by one and the rest still load."), report);
+  const load = async () => {
+    const r = await api("/api/instruments");
+    rows = r.instruments;
+    count.textContent = r.count + " instrument(s)";
+    draw();
+    if (r.can_load && !form.isConnected) root.append(form);
+  };
+  load().catch((e) => toast(e.message, true));
+  root.append(h("div", { class: "card" }, h("h2", null, "Instrument master"), h("div", { class: "row" }, search, count), listBox,
+    note("What can be traded and on what terms: tick and lot size, contract multiplier, currency, expiry, and each broker's symbol for it. Sizing, margin and order checks read these terms.")));
+  return root;
+}
+
+// ----- signal libraries: news sentiment -----
+const SAMPLE_HEADLINES = ["Alpha Industries beats estimates and raises full-year guidance", "Bolt Motors downgraded to sell after weak deliveries",
+  "Regulator opens probe into Bolt Motors battery fires", "Alpha to acquire a sensor maker in all-cash deal", "Cedar Bank shares little changed ahead of results",
+  "Markets wait for the central bank decision"].join("\n");
+const SAMPLE_ALIASES = "AAA = Alpha Industries, Alpha\nBBB = Bolt Motors, Bolt\nCCC = Cedar Bank";
+
+function sentimentView() {
+  const root = h("div"), out = h("div");
+  const headlines = h("textarea", { "aria-label": "headlines", rows: 7 }, SAMPLE_HEADLINES);
+  const aliases = h("textarea", { "aria-label": "symbol aliases", rows: 3 }, SAMPLE_ALIASES);
+  const run = h("button", { class: "btn", type: "submit" }, "Score headlines");
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/lab/sentiment", { headlines: headlines.value, aliases: aliases.value });
+    const tone = (v) => h("span", { class: fmt.tone(v) }, fmt.num(v, 2));
+    out.replaceChildren(
+      h("div", { class: "kpis" }, kpi("Average tone", fmt.num(r.average, 2), fmt.tone(r.average)), kpi("Headlines", r.headlines.length), kpi("No sentiment found", r.neutral)),
+      h("div", { class: "card" }, h("h2", null, "By instrument"), table([{ key: "symbol", label: "Symbol" }, { key: "headlines", label: "Headlines" },
+        { key: "average", label: "Average tone", render: tone }, { key: "events", label: "Events", render: (v) => v.map((x) => x.replaceAll("_", " ")).join(", ") || "–" }],
+        r.by_symbol, "No headline mentions an instrument in the alias list.")),
+      h("div", { class: "card" }, h("h2", null, "Each headline"), table([{ key: "headline", label: "Headline", render: (v) => h("span", { class: "cell-text" }, v) },
+        { key: "score", label: "Words", render: tone }, { key: "events", label: "Events", render: (v) => v.map((x) => x.replaceAll("_", " ")).join(", ") || "–" },
+        { key: "combined", label: "Tone", render: tone }, { key: "symbols", label: "Instruments", render: (v) => v.join(", ") || "–" }], r.headlines)));
+  }); } }, h("h2", null, "Score news headlines"),
+    h("div", { class: "grid cols-2" }, field("Headlines, one per line", headlines), field("Instruments: SYMBOL = name, other name", aliases)),
+    h("div", { style: "margin-top:10px" }, run),
+    note("Tone runs from −1 (negative) to +1 (positive). Words are scored from a finance word list that understands negation (\"not strong\"); events such as an earnings beat, a downgrade or a takeover are found by rules and weigh more when present. It runs offline and gives the same answer every time. The platform also has a language-model scorer (sentiment/llm.py) that needs an API key and falls back to these rules if the service fails; it is not used on this page.")), out);
+  return root;
+}
+
+// ----- quantitative research: option chain -----
+function optionsView() {
+  const root = h("div"), out = h("div");
+  const spot = h("input", { type: "number", value: 100, step: "any", style: "width:90px" });
+  const vol = h("input", { type: "number", value: 20, step: "any", style: "width:80px" });
+  const skew = h("input", { type: "number", value: -0.1, step: "0.05", style: "width:80px" });
+  const smile = h("input", { type: "number", value: 0.3, step: "0.05", style: "width:80px" });
+  const days = h("input", { value: "30, 60, 90", style: "width:120px" });
+  const seed = h("input", { type: "number", value: 0, style: "width:70px" });
+  const expiry = h("select", { "aria-label": "expiry" });
+  const parseDays = () => [...new Set(days.value.split(",").map((x) => Number(x.trim())).filter((x) => x > 0))].sort((a, b) => a - b);
+  const syncExp = () => { const keep = expiry.value; expiry.replaceChildren(...parseDays().map((d, i) => h("option", { value: i }, d + " days"))); if (keep && Number(keep) < expiry.options.length) expiry.value = keep; };
+  days.addEventListener("change", syncExp);
+  syncExp();
+  const run = h("button", { class: "btn", type: "submit" }, "Build chain");
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    out.replaceChildren(optionResults(await api("/api/lab/option_chain", { spot: Number(spot.value), atm_vol: Number(vol.value) / 100, skew: Number(skew.value),
+      smile: Number(smile.value), days: parseDays(), seed: Number(seed.value), expiry: Number(expiry.value || 0) })));
+  }); } }, h("h2", null, "Option chain analytics"),
+    h("div", { class: "row" }, field("Spot", spot), field("ATM volatility %", vol), field("Skew", skew), field("Smile", smile), field("Expiries (days)", days),
+      field("Show expiry", expiry), field("Seed", seed), run),
+    note("The chain is synthetic: Black-Scholes prices from a skewed smile, with a bid/ask spread and open interest concentrated near the money. Implied volatility and the Greeks are then solved back from the mid prices exactly as they would be for a real chain loaded from a data vendor.")), out);
+  return root;
+}
+
+function optionResults(r) {
+  const s = r.summary, sk = r.skew, em = r.expected_move, out = h("div");
+  const atm = r.chain.reduce((best, x) => Math.abs(x.strike - r.spot) < Math.abs(best - r.spot) ? x.strike : best, r.chain[0].strike);
+  const days = (r.expiries.find((x) => x.expiry === r.expiry) || {}).days;
+  out.append(h("div", { class: "kpis" }, kpi("Expiry " + r.expiry, days + " days"), kpi("ATM implied vol", fmt.pct(s.atm_iv, 1)), kpi("Expected move", "±" + fmt.pct(em.iv_move_pct, 1)),
+    kpi("ATM straddle, % of spot", fmt.pct(em.straddle_pct, 1)), kpi("Put/call ratio (OI)", fmt.num(s.put_call_ratio, 2)), kpi("Max pain", fmt.num(s.max_pain, 2)),
+    kpi("25Δ risk reversal, vol pts", fmt.num(sk.risk_reversal * 100, 2), fmt.tone(sk.risk_reversal)), kpi("25Δ butterfly, vol pts", fmt.num(sk.butterfly * 100, 2))));
+  out.append(h("div", { class: "grid cols-2" },
+    h("div", { class: "card" }, h("h2", null, "Volatility smile"), lineChart([{ name: "Implied vol", cls: "s0", fcls: "f0", points: r.smile.map((x) => [fmt.num(x.strike, 1), x.iv]) }],
+      { yFmt: (v) => fmt.pct(v, 1), label: "volatility smile" }),
+      note("Out-of-the-money options only (puts below the forward, calls above), because they are the liquid side. A negative risk reversal means downside protection costs more than upside calls.")),
+    h("div", { class: "card" }, h("h2", null, "Term structure"), table([{ key: "days", label: "Days" }, { key: "expiry", label: "Expiry" }, { key: "atm_iv", label: "ATM implied vol", render: (v) => fmt.pct(v, 1) }], r.expiries),
+      h("h3", { style: "margin-top:14px" }, "Positioning"),
+      table([{ key: "k", label: "" }, { key: "v", label: "Strikes (open interest)", render: (v) => h("span", { class: "cell-text" }, v) }], [
+        { k: "Call walls above spot", v: r.walls.resistance.map(([k, oi]) => `${fmt.num(k, 1)} (${fmt.num(oi, 0)})`).join(", ") || "–" },
+        { k: "Put walls below spot", v: r.walls.support.map(([k, oi]) => `${fmt.num(k, 1)} (${fmt.num(oi, 0)})`).join(", ") || "–" },
+        { k: "Dealer gamma, per 1% move", v: fmt.money(r.gamma_total) + (r.gamma_total >= 0 ? " (dampens moves)" : " (amplifies moves)") }]),
+      note("Large open interest often acts as support or resistance. Dealer gamma assumes dealers are long calls and short puts; it is a convention, not an observation."))));
+  const mid = (b, a) => b == null || a == null ? "–" : fmt.num(b, 2) + " / " + fmt.num(a, 2);
+  out.append(h("div", { class: "card full" }, h("h2", null, "Chain: calls on the left, puts on the right"),
+    table([{ key: "call_open_interest", label: "Call OI", render: (v) => fmt.num(v, 0) }, { key: "call_delta", label: "Δ", render: (v) => fmt.num(v, 2) },
+      { key: "call_iv", label: "IV", render: (v) => fmt.pct(v, 1) }, { key: "call_bid", label: "Bid / ask", render: (v, x) => mid(v, x.call_ask) },
+      { key: "strike", label: "Strike", render: (v) => v === atm ? h("strong", null, fmt.num(v, 2) + " ◀") : fmt.num(v, 2) },
+      { key: "put_bid", label: "Bid / ask", render: (v, x) => mid(v, x.put_ask) }, { key: "put_iv", label: "IV", render: (v) => fmt.pct(v, 1) },
+      { key: "put_delta", label: "Δ", render: (v) => fmt.num(v, 2) }, { key: "put_open_interest", label: "Put OI", render: (v) => fmt.num(v, 0) }], r.chain),
+    note(r.quality.ok ? `Quote check: ${r.quality.quotes} quotes, none crossed, empty or arbitrageable.`
+      : `Quote check found problems: ${r.quality.crossed} crossed, ${r.quality.no_price} without a price, ${r.quality.iv_failures} without an implied vol, ${r.quality.arbitrage.length} arbitrage warning(s).`)));
+  return out;
+}
+
+// ----- learning and AI: prediction models -----
+const MODEL_LABELS = { logistic: "Logistic regression", naive_bayes: "Naive Bayes", knn: "k-nearest neighbours", tree: "Decision tree",
+  forest: "Random forest", boosting: "Gradient boosting", mlp: "Neural network (MLP)" };
+
+function modelsView() {
+  const root = h("div"), out = h("div"), df = singleSymbolFields("AAA");
+  const model = h("select", { "aria-label": "model" }, Object.entries(MODEL_LABELS).map(([k, v]) => h("option", { value: k }, v)));
+  const horizon = h("input", { type: "number", value: 5, min: 1, max: 20, style: "width:70px" });
+  const train = h("input", { type: "number", value: 250, min: 100, style: "width:80px" });
+  const run = h("button", { class: "btn", type: "submit" }, "Train and test");
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/lab/models", { ...df.get(), model: model.value, horizon: Number(horizon.value), train_size: Number(train.value) });
+    const edge = r.accuracy - r.base_rate;
+    out.replaceChildren(
+      h("div", { class: "kpis" }, kpi("Hit rate", fmt.pct(r.accuracy, 1), edge > 0.01 ? "good" : edge < -0.01 ? "bad" : ""), kpi("Up moves (base rate)", fmt.pct(r.base_rate, 1)),
+        kpi("AUC", fmt.num(r.auc, 3)), kpi("Information coefficient", fmt.num(r.ic, 3), fmt.tone(r.ic)), kpi("Predictions", r.predictions),
+        kpi("Refits", r.fits + (r.failed_fits ? ` (${r.failed_fits} failed)` : ""), r.failed_fits ? "warn" : ""), kpi("Time in market", fmt.pct(r.exposure, 0)),
+        kpi("Model trading", fmt.pct(r.strategy_return, 1), fmt.tone(r.strategy_return)), kpi("Buy and hold", fmt.pct(r.buy_hold_return, 1), fmt.tone(r.buy_hold_return))),
+      h("div", { class: "card" }, h("h2", null, "Trading the predictions, next bar, no costs"),
+        lineChart([{ name: MODEL_LABELS[r.model], cls: "s0", fcls: "f0", points: r.equity }, { name: "Buy and hold", cls: "s1", fcls: "f1", points: r.buy_hold }], { label: "model equity" }),
+        h("h3", { style: "margin-top:14px" }, "Predicted probability of a rise"),
+        lineChart([{ name: "P(up)", cls: "s0", fcls: "f0", points: r.probability }], { small: true, baseline: 0.5, yFmt: (v) => fmt.pct(v, 0), label: "predicted probability" }),
+        note(`Latest (${r.latest.date}): P(up over ${r.horizon} bars) = ${fmt.pct(r.latest.probability, 1)}, position ${fmt.num(r.latest.signal, 2)}.`)),
+      h("div", { class: "card" }, h("h2", null, "How this was tested"),
+        note(`Walk-forward: the model was refitted ${r.fits} times, each time on the past only, and predicted the next ${r.step} bars it had not seen. Training stops ${r.horizon} bars before each prediction block (an embargo), because a label built from the next ${r.horizon} bars would otherwise leak the answer. Features (${r.features.length}): ${r.features.join(", ")}. A hit rate a few points above the base rate, or an information coefficient of 0.02 to 0.05, is already useful on daily data; much more usually means leakage. The data is synthetic, so expect little real skill.`)));
+  }); } }, h("h2", null, "Predict the direction of the next move"),
+    h("div", { class: "row" }, ...df.nodes, field("Model", model), field("Horizon (bars)", horizon), field("First training window", train), run),
+    note("Learns P(price is higher after the horizon) from price and volume features, then trades it: long above 52%, short below 48%, flat in between, sized by conviction. Only quants and admins can train models.")), out);
+  return root;
+}
+
+// ----- learning and AI: regimes, change points, anomalies -----
+function regimesView() {
+  const root = h("div"), out = h("div"), df = singleSymbolFields("AAA");
+  const states = h("select", { "aria-label": "number of regimes" }, [2, 3].map((n) => h("option", { value: n }, n + " regimes")));
+  const run = h("button", { class: "btn", type: "submit" }, "Detect");
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/lab/regimes", { ...df.get(), states: Number(states.value) });
+    const cur = r.current;
+    out.replaceChildren(
+      h("div", { class: "kpis" }, kpi("Symbol", r.symbol), kpi("Current regime", cur.label, cur.label === "turbulent" ? "bad" : cur.label === "calm" ? "good" : "warn"),
+        kpi("Probability", fmt.pct(cur.probability, 0)), ...Object.entries(r.time_in_regime).map(([k, v]) => kpi("Time " + k, fmt.pct(v, 0))),
+        kpi("Change points", r.changepoints.length), kpi("Anomalies", r.anomalies.length)),
+      h("div", { class: "card" }, h("h2", null, "Price"), lineChart([{ name: "Close", cls: "s0", fcls: "f0", points: r.close }], { label: "price" }),
+        h("h3", { style: "margin-top:14px" }, "Probability of the most turbulent regime"),
+        lineChart([{ name: "P(" + r.labels[r.labels.length - 1] + ")", cls: "neg", fcls: "fneg", points: r.turbulent }], { small: true, fill: true, baseline: 0, yFmt: (v) => fmt.pct(v, 0), label: "turbulent probability" }),
+        h("h3", { style: "margin-top:14px" }, "Probability that a change point just happened"),
+        lineChart([{ name: "P(change)", cls: "s0", fcls: "f0", points: r.change_prob }], { small: true, fill: true, baseline: 0, yFmt: (v) => fmt.pct(v, 0), label: "change probability" })),
+      h("div", { class: "grid cols-2" },
+        h("div", { class: "card" }, h("h2", null, "The regimes"), table([{ key: "label", label: "Regime" }, { key: "ann_return", label: "Return / year", tone: true, render: (v) => fmt.pct(v, 1) },
+          { key: "ann_vol", label: "Volatility / year", render: (v) => fmt.pct(v, 1) }, { key: "expected_bars", label: "Typical length (bars)", render: (v) => fmt.num(v, 0) }], r.describe),
+          h("h3", { style: "margin-top:14px" }, "Latest stretches"), table([{ key: "label", label: "Regime" }, { key: "start", label: "From" }, { key: "end", label: "To" }, { key: "bars", label: "Bars" }], r.segments)),
+        h("div", { class: "card" }, h("h2", null, "Change points"), table([{ key: "date", label: "New regime from" }, { key: "close", label: "Close", render: (v) => fmt.num(v) }], r.changepoints, "None found."),
+          h("h3", { style: "margin-top:14px" }, "Anomalous days"), table([{ key: "date", label: "Date" }, { key: "return", label: "Return", tone: true, render: (v) => fmt.pct(v) },
+            { key: "z", label: "Robust z-score", render: (v) => fmt.num(v, 1) }], r.anomalies, "No return beyond 5 robust standard deviations."))),
+      note(`A hidden Markov model learns the regimes from the first ${r.trained_on} bars, then labels every bar using only the data up to it; labels in that first stretch are in-sample. Change points come from Bayesian online change-point detection; anomalies compare each return with the median and spread of the 50 before it.`));
+  }); } }, h("h2", null, "Market regimes, change points and anomalies"), h("div", { class: "row" }, ...df.nodes, field("Regimes", states), run),
+    note("Use the current regime to switch strategies or cut size: trend-following tends to suffer in choppy, turbulent stretches.")), out);
+  return root;
+}
+
+// ----- portfolio and risk: margin -----
+const MARGIN_EXAMPLE = [
+  { symbol: "AAA", asset_class: "equity", quantity: 400, price: 150 },
+  { symbol: "BBB", asset_class: "equity", quantity: -300, price: 80 },
+  { symbol: "ESZ6", asset_class: "future", quantity: 2, price: 5000, multiplier: 50, margin_pct: 6 },
+  { symbol: "AAA 160C", asset_class: "option", quantity: -4, price: 3.2, multiplier: 100, underlying: "AAA", underlying_price: 150, strike: 160, right: "call", days: 30, volatility: 25 },
+];
+const MARGIN_FIELDS = [{ key: "symbol", label: "Symbol", width: 90 }, { key: "asset_class", label: "Type", options: ["equity", "etf", "fx", "crypto", "future", "option"] },
+  { key: "quantity", label: "Quantity (− short)", type: "number", width: 100 }, { key: "price", label: "Price", type: "number", width: 90 },
+  { key: "multiplier", label: "Multiplier", type: "number", width: 80, def: 1 }, { key: "margin_pct", label: "Margin %", type: "number", width: 75 },
+  { key: "underlying", label: "Underlying", width: 80 }, { key: "underlying_price", label: "Underlying price", type: "number", width: 90 },
+  { key: "strike", label: "Strike", type: "number", width: 80 }, { key: "right", label: "Right", options: ["call", "put"] },
+  { key: "days", label: "Days to expiry", type: "number", width: 80 }, { key: "volatility", label: "Implied vol %", type: "number", width: 80 }];
+
+function marginView() {
+  const root = h("div"), out = h("div");
+  const showFor = { multiplier: ["future", "option"], margin_pct: ["future"], underlying: ["option"], underlying_price: ["option"], strike: ["option"], right: ["option"],
+    days: ["option"], volatility: ["option"] };
+  const sync = (row) => { const t = row.inputs.asset_class.value; for (const [k, types] of Object.entries(showFor)) row.inputs[k].parentElement.hidden = !types.includes(t); };
+  const ed = rowsEditor(MARGIN_FIELDS, MARGIN_EXAMPLE, "+ Add position", (row) => { row.inputs.asset_class.addEventListener("change", () => sync(row)); sync(row); });
+  const equity = h("input", { type: "number", value: 100000, step: "any", style: "width:120px" });
+  const run = h("button", { class: "btn", type: "submit" }, "Work out margin");
+  const fromSession = h("button", { class: "btn ghost", type: "button" }, "Use my paper-trading positions");
+  const show = (r) => out.replaceChildren(marginResults(r));
+  fromSession.addEventListener("click", () => busy(fromSession, async () => show(await api("/api/risk/margin", { source: "session" }))));
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const positions = ed.get().map((p) => ({ ...p, margin_pct: p.margin_pct == null ? null : p.margin_pct / 100, volatility: p.volatility == null ? null : p.volatility / 100 }));
+    show(await api("/api/risk/margin", { equity: Number(equity.value), positions }));
+  }); } }, h("h2", null, "Margin on a set of positions"), ed.node,
+    h("div", { class: "row", style: "margin-top:12px" }, field("Account equity", equity), run, fromSession),
+    note("Two methods side by side. Rule-based charges each position on its own (50% of a stock's value, the exchange's initial margin for a future, a share of the underlying for a short option), so hedges get no relief. Scenario margin moves each underlying's price and volatility up and down and charges the worst loss, so a covered call or a hedged future is charged for its net risk. The rates are typical defaults, not your broker's or exchange's schedule.")), out);
+  return root;
+}
+
+function marginResults(r) {
+  const a = r.rules, b = r.scenario, out = h("div");
+  const rows = [["Initial requirement", "initial", fmt.money], ["Maintenance requirement", "maintenance", fmt.money], ["Available for new positions", "available_funds", fmt.money],
+    ["Excess liquidity", "excess_liquidity", fmt.money], ["Utilisation of equity", "utilisation", (v) => fmt.pct(v, 1)], ["Gross leverage", "leverage", (v) => fmt.num(v, 2) + "x"],
+    ["Margin call", "margin_call", yesNo]].map(([label, k, f]) => ({ label, rules: f(a[k]), scenario: f(b[k]) }));
+  const call = a.margin_call || b.margin_call;
+  out.append(h("div", { class: "kpis" }, kpi("Equity", fmt.money(r.equity)), kpi("Rule-based initial", fmt.money(a.initial)), kpi("Scenario initial", fmt.money(b.initial)),
+    kpi("Scenario vs rule-based", (b.initial >= a.initial ? "+" : "") + fmt.money(b.initial - a.initial), b.initial < a.initial ? "good" : "warn"),
+    kpi("Margin call", call ? "yes" : "no", call ? "bad" : "good")));
+  if (call) out.append(h("div", { class: "banner halt" }, h("strong", null, "Margin call"), ` Equity is below maintenance: shortfall ${fmt.money(Math.max(a.shortfall, b.shortfall))}. Add funds or reduce positions.`));
+  out.append(h("div", { class: "grid cols-2" },
+    h("div", { class: "card" }, h("h2", null, "Account view"), table([{ key: "label", label: "" }, { key: "rules", label: "Rule-based" }, { key: "scenario", label: "Scenario" }], rows)),
+    h("div", { class: "card" }, h("h2", null, "Scenario margin by underlying"), table([{ key: "group", label: "Underlying" }, { key: "margin", label: "Margin", render: fmt.money },
+      { key: "worst_price_move", label: "Worst price move", render: (v) => fmt.pct(v, 0) }, { key: "worst_vol_move", label: "Vol move", render: (v) => fmt.pct(v, 0) },
+      { key: "positions", label: "Positions" }], Object.entries(b.detail.by_underlying).map(([group, v]) => ({ group, ...v }))),
+      note("Within one underlying, gains on one leg offset losses on another, so a covered call or a hedged pair costs less here than under the rules. Across underlyings no offset is given, which is the conservative choice. Every underlying is scanned over the same ±15% price range, so a future whose exchange margin is only a few percent of its value can cost more here than under the rules."))));
+  out.append(h("div", { class: "card" }, h("h2", null, "Positions, each on its own"), table([{ key: "symbol", label: "Symbol" }, { key: "asset_class", label: "Type" },
+    { key: "quantity", label: "Quantity" }, { key: "price", label: "Price", render: (v) => fmt.num(v) }, { key: "value", label: "Value", render: fmt.money },
+    { key: "initial", label: "Initial", render: fmt.money }, { key: "maintenance", label: "Maintenance", render: fmt.money }], r.positions)));
+  return out;
+}
+
+// ----- portfolio and risk: currency exposure -----
+function currencyView() {
+  const root = h("div"), out = h("div");
+  const base = h("input", { value: "USD", maxlength: 3, style: "width:70px", "aria-label": "base currency" });
+  const holdings = rowsEditor([{ key: "currency", label: "Currency", width: 70 }, { key: "amount", label: "Value in that currency (positions + cash)", type: "number", width: 150 }],
+    [{ currency: "USD", amount: 50000 }, { currency: "EUR", amount: 20000 }, { currency: "JPY", amount: 3000000 }, { currency: "GBP", amount: -5000 }], "+ Add holding");
+  const rates = rowsEditor([{ key: "pair", label: "Pair", width: 80 }, { key: "rate", label: "Rate", type: "number", width: 100 }],
+    [{ pair: "EURUSD", rate: 1.08 }, { pair: "USDJPY", rate: 150 }, { pair: "GBPUSD", rate: 1.27 }], "+ Add rate");
+  const ratio = h("input", { type: "number", value: 100, min: 0, max: 100, style: "width:70px" });
+  const att = { value_start: 100000, value_end: 104000, rate_start: 1.08, rate_end: 1.05 };
+  const attIn = Object.fromEntries(Object.entries(att).map(([k, v]) => [k, h("input", { type: "number", value: v, step: "any", style: "width:100px" })]));
+  const run = h("button", { class: "btn", type: "submit" }, "Value and hedge");
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/risk/currency", { base: base.value, holdings: holdings.get(), rates: rates.get(), hedge_ratio: Number(ratio.value) / 100,
+      attribution: Object.fromEntries(Object.entries(attIn).map(([k, v]) => [k, Number(v.value)])) });
+    const x = r.exposure;
+    out.replaceChildren(
+      h("div", { class: "kpis" }, kpi("Total in " + x.base, fmt.num(x.total, 0)), kpi("Gross", fmt.num(x.gross, 0)), kpi("Held in other currencies", fmt.pct(x.fx_exposure, 1), x.fx_exposure > 0.3 ? "warn" : "")),
+      h("div", { class: "grid cols-2" },
+        h("div", { class: "card" }, h("h2", null, "Exposure by currency"), table([{ key: "ccy", label: "Currency" }, { key: "local", label: "Local", render: (v) => fmt.num(v, 0) },
+          { key: "rate", label: "Rate to " + x.base, render: (v) => fmt.num(v, 4) }, { key: "base", label: "In " + x.base, tone: true, render: (v) => fmt.num(v, 0) },
+          { key: "share", label: "Share of gross", render: (v) => fmt.pct(v, 1) }], Object.entries(x.by_currency).map(([ccy, v]) => ({ ccy, ...v })))),
+        h("div", { class: "card" }, h("h2", null, `Forward hedges for ${fmt.pct(r.hedge_ratio, 0)} of the exposure`),
+          table([{ key: "ccy", label: "Currency" }, { key: "amount", label: "Sell forward (− = buy)", render: (v) => fmt.num(v, 0) }],
+            Object.entries(r.hedges).map(([ccy, amount]) => ({ ccy, amount })), "Nothing to hedge."),
+          r.attribution ? h("div", null, h("h3", { style: "margin-top:14px" }, "Where a foreign holding's result came from"),
+            table([{ key: "k", label: "Source" }, { key: "v", label: "In " + x.base, tone: true, render: (v) => fmt.num(v, 0) }],
+              [{ k: "Asset price", v: r.attribution.asset }, { k: "Exchange rate", v: r.attribution.currency }, { k: "Both together", v: r.attribution.interaction }, { k: "Total", v: r.attribution.total }]),
+            note("The holding's value in its own currency and the rate at the start and end; the three sources add up to the total exactly.")) : null)));
+  }); } }, h("h2", null, "Multi-currency exposure"),
+    h("div", { class: "row" }, field("Base currency", base), field("Hedge ratio %", ratio)),
+    h("div", { class: "grid cols-2", style: "margin-top:10px" }, h("div", null, h("h3", null, "Holdings"), holdings.node), h("div", null, h("h3", null, "Exchange rates"), rates.node)),
+    h("h3", { style: "margin-top:12px" }, "Attribution example: one holding in a foreign currency"),
+    h("div", { class: "row" }, field("Value at start (local)", attIn.value_start), field("Value at end (local)", attIn.value_end), field("Rate at start", attIn.rate_start), field("Rate at end", attIn.rate_end)),
+    h("div", { style: "margin-top:12px" }, run),
+    note("Rates are quoted as the price of the first currency in the second (EURUSD 1.08: one euro costs 1.08 dollars). Pairs that are not given directly are crossed through the base currency. Negative values are short positions or borrowed cash.")), out);
+  return root;
+}
+
+// ----- trading: order-book simulator -----
+function orderbookView() {
+  const root = h("div"), out = h("div");
+  const side = h("select", null, h("option", { value: "BUY" }, "Buy"), h("option", { value: "SELL" }, "Sell"));
+  const qty = h("input", { type: "number", value: 800, min: 1, style: "width:90px" });
+  const order = h("select", null, h("option", { value: "market" }, "Market"), h("option", { value: "limit" }, "Limit"));
+  const offset = h("input", { type: "number", value: 0, min: -20, max: 50, style: "width:70px" });
+  const offsetF = field("Ticks behind the touch", offset);
+  const latency = h("input", { type: "number", value: 0.5, min: 0, max: 10, step: "0.1", style: "width:70px" });
+  const vol = h("input", { type: "number", value: 2, min: 0, max: 20, step: "0.5", style: "width:70px" });
+  const rate = h("input", { type: "number", value: 50, min: 5, max: 500, style: "width:70px" });
+  const events = h("input", { type: "number", value: 1500, min: 100, max: 5000, style: "width:80px" });
+  const seed = h("input", { type: "number", value: 1, style: "width:70px" });
+  const syncOrder = () => { offsetF.hidden = order.value !== "limit"; };
+  order.addEventListener("change", syncOrder);
+  syncOrder();
+  const run = h("button", { class: "btn", type: "submit" }, "Simulate");
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    out.replaceChildren(orderbookResults(await api("/api/trading/orderbook", { side: side.value, quantity: Number(qty.value), order: order.value,
+      offset_ticks: Number(offset.value), latency: Number(latency.value), volatility: Number(vol.value), event_rate: Number(rate.value), events: Number(events.value), seed: Number(seed.value) })));
+  }); } }, h("h2", null, "Send one order into a simulated order book"),
+    h("div", { class: "row" }, field("Side", side), field("Quantity", qty), field("Order", order), offsetF, field("Latency (seconds)", latency),
+      field("Price drift (ticks / √s)", vol), field("Market events / second", rate), field("Events after sending", events), field("Seed", seed), run),
+    note("Background traders place, cancel and take liquidity around a drifting fair value; your order reaches the book after the latency. The same order is also run with no latency on the same random tape, so the difference is what the delay cost. A limit order at 0 ticks joins the best bid (buy) or best ask (sell); positive values sit further back, negative values cross into the spread.")), out);
+  return root;
+}
+
+function orderbookResults(r) {
+  const x = r.result, z = r.no_latency, out = h("div");
+  const cost = x.slippage_bps != null && z.slippage_bps != null ? x.slippage_bps - z.slippage_bps : null;
+  out.append(h("div", { class: "kpis" }, kpi("Filled", `${fmt.num(x.filled, 0)} / ${fmt.num(r.quantity, 0)}`, x.fill_rate < 1 ? "warn" : "good"),
+    kpi("Average price", fmt.num(x.average_price, 4)), kpi("Arrival mid", fmt.num(x.arrival_mid, 4)), kpi("Slippage vs arrival", bps(x.slippage_bps), fmt.tone(-(x.slippage_bps || 0))),
+    kpi("Same order, no latency", bps(z.slippage_bps)), kpi("Cost of latency", bps(cost), cost > 0 ? "bad" : cost < 0 ? "good" : ""),
+    x.unfilled > 0 ? kpi("Unfilled part: market moved", bps(x.opportunity_bps), fmt.tone(-(x.opportunity_bps || 0))) : null, kpi("Average spread", bps(x.spread_bps))));
+  if (x.rejections.length) out.append(h("div", { class: "banner" }, h("strong", null, "The book refused part of the order: "), x.rejections.join("; ")));
+  out.append(h("div", { class: "card" }, h("h2", null, "Mid price over the simulation"), lineChart([{ name: "Mid", cls: "s0", fcls: "f0", points: x.mid }], { label: "mid price" }),
+    note(`Your order was sent at ${fmt.num(x.sent_at, 1)} s${x.limit_price != null ? " with a limit of " + fmt.num(x.limit_price, 2) : " at market"} and took part in ${x.fills} trade(s). Positive slippage means you paid more (or sold for less) than the mid when you decided.`)));
+  const lvl = (rows) => rows.map(([price, size]) => ({ price, size }));
+  const e = x.estimate;
+  out.append(h("div", { class: "grid cols-2" },
+    h("div", { class: "card" }, h("h2", null, "Book when the order was sent"), h("div", { class: "grid cols-2" },
+      table([{ key: "price", label: "Bid", render: (v) => fmt.num(v, 2) }, { key: "size", label: "Size", render: (v) => fmt.num(v, 0) }], lvl(x.depth.bids), "Empty."),
+      table([{ key: "price", label: "Ask", render: (v) => fmt.num(v, 2) }, { key: "size", label: "Size", render: (v) => fmt.num(v, 0) }], lvl(x.depth.asks), "Empty."))),
+    h("div", { class: "card" }, h("h2", null, "Estimate before sending (market order)"), table([{ key: "k", label: "" }, { key: "v", label: "" }], [
+      { k: "Average price", v: fmt.num(e.average_price, 4) }, { k: "Could fill now", v: fmt.num(e.filled, 0) }, { k: "Left unfilled", v: fmt.num(e.unfilled, 0) },
+      { k: "Price levels used", v: fmt.num(e.levels, 0) }, { k: "Slippage vs mid", v: bps(e.slippage_bps) }]),
+      note("Walking the visible book is what an immediate market order would pay; by the time a delayed order arrives the book has changed."))));
+  out.append(note("The background flow is random: this shows how queue position, size and delay affect a fill, not how any real market behaves. Backtests and paper trading still fill on bars."));
+  return out;
+}
+
+// ----- operations and control: health and jobs -----
+function healthView() {
+  const root = h("div");
+  const load = async () => {
+    const r = await api("/api/ops/health");
+    const st = r.health.status, cls = st === "UP" ? "good" : st === "DEGRADED" ? "warn" : "bad";
+    const replay = h("button", { class: "btn ghost", type: "button" }, "Retry delivery");
+    replay.addEventListener("click", () => busy(replay, async () => { const x = await api("/api/ops/replay", {}); toast(`Delivered ${x.delivered}, still failing ${x.still_failing}`); await load(); }));
+    const runJobs = h("button", { class: "btn ghost", type: "button" }, "Run due jobs now");
+    runJobs.addEventListener("click", () => busy(runJobs, async () => { const x = await api("/api/ops/run_jobs", {}); toast(x.ran.length ? "Ran: " + x.ran.join(", ") : "No job was due"); await load(); }));
+    const shown = (v) => Array.isArray(v) ? (v.length ? v.join(", ") : "none") : v && typeof v === "object" ? JSON.stringify(v) : String(v);
+    const restore = Object.entries(r.restore || {}).map(([k, v]) => ({ k: k.replaceAll("_", " "), v: shown(v) }));
+    root.replaceChildren(
+      h("div", { class: "kpis" }, kpi("Platform", st, cls), kpi("Failing checks", r.health.failing.length, r.health.failing.length ? "bad" : "good"),
+        kpi("State saved to disk", r.persistent ? "yes" : "no", r.persistent ? "good" : "warn"), kpi("Open paper sessions", r.sessions), kpi("Users", r.users),
+        kpi("Undelivered notifications", r.undelivered.length, r.undelivered.length ? "warn" : "")),
+      h("div", { class: "card" }, h("h2", null, "Health checks"), table([{ key: "name", label: "Check" }, { key: "ok", label: "State", render: (v) => v ? h("span", { class: "good" }, "ok") : h("span", { class: "bad" }, "failing") },
+        { key: "detail", label: "Detail", render: (v) => h("span", { class: "cell-text" }, v || "") }, { key: "critical", label: "Critical", render: (v) => v ? "yes" : "no" },
+        { key: "latency_ms", label: "Took (ms)", render: (v) => fmt.num(v, 1) }], r.health.items, "No checks registered."),
+        note("A failing critical check marks the platform DOWN; a failing non-critical one marks it DEGRADED. Changes of state are sent as notifications.")),
+      h("div", { class: "grid cols-2" },
+        h("div", { class: "card" }, h("h2", null, "Scheduled jobs"), table([{ key: "name", label: "Job" }, { key: "enabled", label: "On", render: (v) => v ? "yes" : "no" },
+          { key: "runs", label: "Runs" }, { key: "failures", label: "Failures" }, { key: "next_run", label: "Next run", render: when }, { key: "last_error", label: "Last error", render: (v) => v || "–" }],
+          r.jobs, "No scheduled jobs (state is not saved to disk, so there is nothing to save periodically)."), h("div", { class: "row" }, runJobs)),
+        h("div", { class: "card" }, h("h2", null, "Undelivered notifications"), table([{ key: "channel", label: "Channel" }, { key: "title", label: "Notification" },
+          { key: "error", label: "Error", render: (v) => h("span", { class: "cell-text" }, v || "") }, { key: "attempts", label: "Attempts" }], r.undelivered, "Everything was delivered."),
+          r.undelivered.length ? h("div", { class: "row" }, replay) : null)),
+      h("div", { class: "grid cols-2" },
+        h("div", { class: "card" }, h("h2", null, "Notification routes"), table([{ key: "channel", label: "Channel" }, { key: "scope", label: "Scope" },
+          { key: "min_severity", label: "From severity", render: sevBadge }, { key: "topics", label: "Topics", render: (v) => v.join(", ") || "all" }], r.routes, "No routes.")),
+        h("div", { class: "card" }, h("h2", null, "What was restored at start-up"), table([{ key: "k", label: "Part" }, { key: "v", label: "Result", render: (v) => h("span", { class: "cell-text" }, v) }], restore,
+          r.persistent ? "Nothing to restore: this is a fresh database." : "The server was started without --db-dir, so nothing is saved or restored."),
+          note("Channels holding a password or token are never written to disk; they are listed here as needing to be added again after a restart."))));
+  };
+  load().catch((e) => toast(e.message, true));
   return root;
 }
 
 // ---------- boot ----------
 async function boot() {
   if (!store.token) return mount(renderLogin());
-  try { store.me = await api("/api/me"); renderApp(); }
-  catch (_) { mount(renderLogin()); }
+  try { store.me = await api("/api/me"); }
+  catch (_) { return mount(renderLogin()); }
+  try { store.structure = await api("/api/structure"); } catch (_) { store.structure = null; }   // the menu still works, with plainer titles
+  renderApp();
 }
 boot();
