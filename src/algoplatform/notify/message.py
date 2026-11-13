@@ -39,4 +39,9 @@ class Notification:
 
     def to_dict(self) -> Dict[str, Any]:
         return {"id": self.id, "ts": self.ts, "severity": self.severity.value, "topic": self.topic, "title": self.title,
-                "body": self.body, "user_id": self.user_id, "data": dict(self.data)}
+                "body": self.body, "user_id": self.user_id, "key": self.key, "data": dict(self.data)}
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> "Notification":
+        return cls(d["title"], d.get("body", ""), Severity(d.get("severity", "INFO")), d.get("topic", "general"), d.get("key"),
+                   d.get("user_id"), dict(d.get("data") or {}), float(d.get("ts") or time.time()), d.get("id") or uuid.uuid4().hex[:12])

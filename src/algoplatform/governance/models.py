@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from ..core.exceptions import GovernanceError, ModelError
+from ..utils.helpers import json_safe
 
 STAGES = ("candidate", "staging", "production", "archived")
 
@@ -104,6 +105,50 @@ class ModelRegistry:
         """True when ``data`` differs from what the staged model was trained on (a prompt to retrain or investigate)."""
         fp = fingerprint(*(data if isinstance(data, (tuple, list)) else (data,)))
         return self.get(name, stage).data_fingerprint != fp
+
+    # ---- persistence ---------------------------------------------------------------------------------------------------------
+    def export_state(self) -> List[Dict[str, Any]]:
+        """Version metadata as plain data. The fitted model objects are **not** included: they are arbitrary Python
+        objects, and writing them would mean pickling, which must never be loaded from a file someone else could have
+        changed. Save model weights with the tool that produced them and re-attach after a restart (:meth:`attach`)."""
+        with self._lock:
+            return [json_safe({"name": v.name, "version": v.version, "stage": v.stage, "metrics": v.metrics, "params": v.params,
+                               "data_fingerprint": v.data_fingerprint, "created_at": v.created_at, "created_by": v.created_by, "notes": v.notes})
+                    for vs in self._versions.values() for v in vs]
+
+    def import_state(self, records: List[Dict[str, Any]]) -> int:
+        """Restore version metadata written by :meth:`export_state`. Each restored version has ``model = None`` until
+        :meth:`attach` supplies the object; :meth:`missing_models` lists the ones still waiting."""
+        with self._lock:
+            for d in sorted(records, key=lambda d: (d["name"], d["version"])):
+                versions = self._versions.setdefault(d["name"], [])
+                if any(v.version == d["version"] for v in versions):
+                    continue
+                versions.append(ModelVersion(d["name"], int(d["version"]), None, d.get("stage", "candidate"),
+                                             {k: v for k, v in (d.get("metrics") or {}).items() if v is not None}, dict(d.get("params") or {}),
+                                             d.get("data_fingerprint", ""), datetime.fromisoformat(d["created_at"]), d.get("created_by", ""),
+                                             d.get("notes", "")))
+                versions.sort(key=lambda v: v.version)
+        return len(records)
+
+    def attach(self, name: str, version: int, model: Any, data: Any = None) -> ModelVersion:
+        """Give a restored version its model object back. With ``data``, the training data is fingerprinted and must
+        match the recorded fingerprint, so the wrong model cannot be attached to a production slot unnoticed."""
+        match = [v for v in self.versions(name) if v.version == version]
+        if not match:
+            raise ModelError(f"model '{name}' has no version {version}")
+        mv = match[0]
+        if data is not None and mv.data_fingerprint:
+            fp = fingerprint(*(data if isinstance(data, (tuple, list)) else (data,)))
+            if fp != mv.data_fingerprint:
+                raise GovernanceError("the training data does not match the fingerprint recorded for this version", code="FINGERPRINT_MISMATCH",
+                                      details={"expected": mv.data_fingerprint, "got": fp})
+        mv.model = model
+        return mv
+
+    def missing_models(self) -> List[str]:
+        """``name:version`` of every version in staging or production whose model object has not been attached."""
+        return [f"{v.name}:{v.version}" for vs in self._versions.values() for v in vs if v.model is None and v.stage in ("staging", "production")]
 
     def to_frame(self) -> pd.DataFrame:
         rows = [{"name": v.name, "version": v.version, "stage": v.stage, "created_at": v.created_at, "created_by": v.created_by,

@@ -110,7 +110,7 @@ ALLOWED: Dict[str, FrozenSet[str]] = {k: frozenset(v) for k, v in {
     "persistence": ("core", "brokers"),
     "notify": _LIBS,
     "ops": _LIBS,
-    "governance": ("core", "users", "analytics"),
+    "governance": ("core", "utils", "users", "analytics"),
     # application
     "app": ("core", "utils", "users", "data", "instruments", "quant", "technical", "fundamentals", "sentiment", "relationships", "strategy", "selection",
             "portfolio", "risk", "brokers", "orders", "execution", "backtest", "optimize", "analytics", "persistence", "notify", "ops",
