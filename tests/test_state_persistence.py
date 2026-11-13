@@ -362,7 +362,12 @@ class PlatformStateTests(unittest.TestCase):
         store = SqliteStore(":memory:")
         self.addCleanup(store.close)
         result = bare.save_state(store)
-        self.assertEqual((sorted(result["saved"]), result["errors"]), (["alerts", "instruments", "lifecycle", "models", "notifier"], {}))
+        self.assertEqual((sorted(result["saved"]), result["errors"]),
+                         (["alerts", "data", "history", "instruments", "lifecycle", "models", "notifier"], {}))
+        second = SqliteStore(":memory:")                                              # unchanged parts still reach a new store
+        self.addCleanup(second.close)
+        bare.save_state(second)
+        self.assertIsNotNone(second.get("platform.history"))
         other = TradingPlatform(PlatformConfig(log_level="CRITICAL"))
         other.load_state(store)
         self.assertIn("ZZZ", other.instruments)

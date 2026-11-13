@@ -42,7 +42,7 @@ class HistoryLibrary:
         self.max_rows_per_series, self.max_total_rows, self.max_series = max_rows_per_series, max_total_rows, max_series
         self._series: Dict[Tuple[str, str], Series] = {}
         self._lock = threading.RLock()
-        self.version = 0                      # changes on every write: lets the platform skip saving an unchanged library
+        self.state_version = 0                # changes on every write: lets the platform skip saving an unchanged library
 
     # ---- writing ----------------------------------------------------------------------------------------------------------
     def put(self, symbol: str, timeframe: str, frame: pd.DataFrame, provider: str, cleaning: Optional[Mapping[str, int]] = None) -> Series:
@@ -63,14 +63,14 @@ class HistoryLibrary:
                                       "remove some series or download a shorter range")
             series = Series(symbol, timeframe, provider, frame, pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"), dict(cleaning or {}))
             self._series[key] = series
-            self.version += 1
+            self.state_version += 1
             return series
 
     def remove(self, symbol: str, timeframe: str = "1Day") -> bool:
         with self._lock:
             gone = self._series.pop((symbol, timeframe), None) is not None
             if gone:
-                self.version += 1
+                self.state_version += 1
             return gone
 
     # ---- reading ----------------------------------------------------------------------------------------------------------

@@ -21,7 +21,7 @@ default branch merged into it (commit `a1631ed`, no file changes), so a new pull
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
 | Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
-| Whole test-suite | **791 tests pass** (407 original + 384 new), with deprecation warnings treated as errors. |
+| Whole test-suite | **799 tests pass** (407 original + 392 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
 | Type checker (`mypy`) | **No findings in the files added by this work.** 112 findings remain in files that predate it (the CI job stays informational). |
@@ -191,7 +191,8 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_web_quant.py` | 15 | passing |
 | `tests/test_web_groups.py` (menu follows the structure and the server; new routes) | 16 | passing |
 | `tests/test_data_providers.py` (scenarios, Alpaca and IB against fakes, history library) | 18 | passing |
-| **Total** | **791** | **passing** |
+| `tests/test_market_data_service.py` (connections, keys, downloads, sample-only lock, environment, restart) | 8 | passing |
+| **Total** | **799** | **passing** |
 
 ---
 
@@ -203,7 +204,7 @@ IB), or connect a data provider; add a switch for sample data"):
 | Step | State |
 |---|---|
 | Data layer: 8 named sample scenarios (`data/synthetic.py`), `SampleDataProvider`, `AlpacaDataProvider` (REST, pages, back-off), `IBDataProvider` (TWS / IB Gateway through optional `ib_async`, chunking within IB pacing), `HistoryLibrary` (`data/library.py`), provider error types | **done, tested** (`test_data_providers`, against fakes) |
-| Platform wiring: market-data service, provider connections with keys in the credential vault, sample-data-only lock, history saved with the platform state | pending |
+| Platform wiring: `app/marketdata.py` (`TradingPlatform.data`): provider connections by operations with keys in the credential vault only, start-up from environment variables, downloads into the shared library by research, the sample-data-only lock, history and settings saved with the platform state (unchanged history is not rewritten); desk methods on research and operations | **done, tested** (`test_market_data_service`, `test_state_persistence`) |
 | Web: data routes, sample/real switch in the header and on every data form, Data providers page, paper trading replaying real history | pending |
 | Documentation, browser check, CI | pending |
 
@@ -254,6 +255,7 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | GitHub Actions, workflow "CI", run 24 (commit `a1b58dd`, round three) | lint: success; test 3.10, 3.11, 3.12, 3.13: success; optional-dependencies: success; run conclusion: success; typecheck (informational): failure, 112 findings, same files as locally, none in files added by this work |
 | 2026-11-13 | GitHub Actions, runs 18 to 22 (round two, including pull-request runs 20 and 22) | all success |
 | 2026-11-13 | `cd tests && python -m unittest test_data_providers`; full suite (exit status checked); ruff; structure check; mypy on `data/` | 18 tests OK; **791 tests, OK**; clean; dependency rules OK; no findings in the new data files |
+| 2026-11-13 | `cd tests && python -m unittest test_market_data_service test_state_persistence`; full suite (exit status checked); ruff; structure; mypy | 27 tests OK; **799 tests, OK**; clean; OK; 112 findings, all in pre-existing files |
 | 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---

@@ -5,7 +5,7 @@ API layer can call it directly without re-implementing access control.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from ..backtest.engine import BacktestEngine, BacktestResult
 from ..brokers.base import BrokerGateway, create_gateway
@@ -33,6 +33,7 @@ from ..strategy.builder import create_from_spec, spec_factory
 from ..users.manager import BrokerAccountManager, User, UserManager
 from ..utils.helpers import json_safe
 from .engine import TradingEngine
+from .marketdata import MarketDataService
 
 log = get_logger(__name__)
 
@@ -60,13 +61,15 @@ class TradingPlatform:
         self.scheduler = Scheduler()
         self.lifecycle = StrategyLifecycle(self.audit)
         self.models = ModelRegistry()
+        self.data = MarketDataService(self.accounts.vault, self.audit)    # data providers, downloaded history, sample-data lock
         self.store = store
+        self._saved_versions: Dict[Tuple[int, str], Any] = {}         # (store, part) -> version last written there
         self.restore_report: Dict[str, Any] = self.load_state(store) if store is not None else {}
 
     # ---- durable state of the shared services ---------------------------------------------------
     def _state_parts(self) -> Dict[str, Any]:
         return {"instruments": self.instruments, "lifecycle": self.lifecycle, "models": self.models, "alerts": self.alerts,
-                "notifier": self.notifier}
+                "notifier": self.notifier, "data": self.data, "history": self.data.library}
 
     def save_state(self, store: Optional[SqliteStore] = None) -> Dict[str, Any]:
         """Write the shared services to the store. Each part is saved on its own, so a part that cannot be serialised
@@ -76,9 +79,15 @@ class TradingPlatform:
             raise ConfigError("no store configured: pass one to save_state() or to TradingPlatform(store=...)")
         saved, errors = [], {}
         for name, part in self._state_parts().items():
+            version = getattr(part, "state_version", None)          # a part that counts its changes is only rewritten when it
+            if version is not None and self._saved_versions.get((id(store), name)) == version:   # changed since this store got it
+                saved.append(name)
+                continue
             try:
                 store.put(f"platform.{name}", json_safe(part.export_state()))
                 saved.append(name)
+                if version is not None:
+                    self._saved_versions[(id(store), name)] = version
             except Exception as exc:  # noqa: BLE001 - never let one part's failure lose the rest
                 errors[name] = repr(exc)
                 log.error("could not save platform state '%s': %r", name, exc)
@@ -104,6 +113,8 @@ class TradingPlatform:
                     report[name] = part.import_state(state, channels)
                 else:
                     report[name] = part.import_state(state)
+                if getattr(part, "state_version", None) is not None:
+                    self._saved_versions[(id(store), name)] = part.state_version   # what was just loaded is already there
             except Exception as exc:  # noqa: BLE001 - a damaged part must not stop the others from loading
                 report[name] = {"error": repr(exc)}
                 log.error("could not restore platform state '%s': %r", name, exc)

@@ -253,9 +253,9 @@ class LibraryTests(unittest.TestCase):
         with self.assertRaises(MissingDataError) as ctx:
             lib.market_data(["AAA", "ZZZ", "YYY"], min_rows=10)
         self.assertEqual(len(ctx.exception.details["problems"]), 3)
-        v = lib.version
+        v = lib.state_version
         self.assertTrue(lib.remove("AAA"))
-        self.assertGreater(lib.version, v)
+        self.assertGreater(lib.state_version, v)
         self.assertFalse(lib.remove("AAA"))
 
 

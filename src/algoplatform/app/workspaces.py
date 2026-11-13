@@ -7,11 +7,13 @@ user exactly the desks :func:`desks_for` returns and call them directly.
 ==============  ===================  =================================================================================
 desk            typical role         what it is for
 ==============  ===================  =================================================================================
-research        QUANT                backtest, optimise, score results, select instruments, register models, propose
+research        QUANT                backtest, optimise, score results, select instruments, register models, propose,
+                                     download market history
 trading         TRADER               open sessions, place and cancel orders, personal alerts
 portfolio       PORTFOLIO_MANAGER    allocate capital, approve or reject promotions
 risk            RISK_MANAGER         risk snapshot, halt / resume, demote a live strategy, risk alerts
-operations      OPERATIONS           health, notification channels, dead letters, instruments, schedules
+operations      OPERATIONS           health, notification channels, dead letters, instruments, schedules, data providers,
+                                     the sample-data-only lock
 compliance      AUDITOR              audit trail, approval history, unacknowledged critical alerts (read-only)
 admin           ADMIN                users and roles
 ==============  ===================  =================================================================================
@@ -92,6 +94,13 @@ class ResearchDesk(Desk):
     def propose(self, strategy_id: str, verdict: StrategyVerdict, note: str = "") -> Any:
         """Ask for the strategy to move to the next stage (research -> paper -> live). Someone else must approve."""
         return self._saved(self.platform.lifecycle.submit(self.user, strategy_id, verdict, note))
+
+    def fetch_history(self, provider: str, symbols: Sequence[str], start: Any = None, end: Any = None, timeframe: str = "1Day") -> Dict[str, Any]:
+        """Download bars from a connected provider into the shared history library (refused in sample-data-only mode)."""
+        return self._saved(self.platform.data.fetch(self.user, provider, symbols, start, end, timeframe))
+
+    def remove_history(self, symbol: str, timeframe: str = "1Day") -> bool:
+        return self._saved(self.platform.data.remove_history(self.user, symbol, timeframe))
 
     def register_model(self, name: str, model: Any, metrics: Optional[Mapping[str, float]] = None, data: Any = None, **kwargs: Any) -> ModelVersion:
         self._need(Permission.TRAIN_MODEL)
@@ -216,6 +225,20 @@ class OperationsDesk(Desk):
 
     def jobs(self) -> List[Dict[str, Any]]:
         return self.platform.scheduler.jobs()
+
+    def connect_data_provider(self, name: str, settings: Optional[Mapping[str, Any]] = None, secrets: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+        """Connect Alpaca (key ID and secret) or Interactive Brokers (host, port, client id). Keys go to the vault only."""
+        return self._saved(self.platform.data.connect(self.user, name, settings, secrets))
+
+    def disconnect_data_provider(self, name: str) -> bool:
+        return self._saved(self.platform.data.disconnect(self.user, name))
+
+    def test_data_provider(self, name: str, symbol: Optional[str] = None) -> Dict[str, Any]:
+        return self.platform.data.test(self.user, name, symbol)
+
+    def set_sample_data_only(self, on: bool) -> bool:
+        """On: every page uses generated data; downloading, downloaded history and uploaded files are refused."""
+        return self._saved(self.platform.data.set_sample_only(self.user, on))
 
     def run_scheduled(self) -> List[str]:
         return self.platform.scheduler.run_pending()
