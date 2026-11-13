@@ -3,7 +3,7 @@
 This file is the single source of truth for what has been built, what has been verified, and what is still pending.
 It is updated at the end of every unit of work. Rules for keeping it honest are in [`CLAUDE.md`](CLAUDE.md).
 
-**Last updated:** 2026-11-13, after round three (web UI regrouped by job group)
+**Last updated:** 2026-11-13, during round four (sample data, historical data from Alpaca / IB, data switch)
 **Working branch:** `ccr-b7d3820c-a4gug7`
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
@@ -21,7 +21,7 @@ default branch merged into it (commit `a1631ed`, no file changes), so a new pull
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
 | Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
-| Whole test-suite | **773 tests pass** (407 original + 366 new), with deprecation warnings treated as errors. |
+| Whole test-suite | **791 tests pass** (407 original + 384 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
 | Type checker (`mypy`) | **No findings in the files added by this work.** 112 findings remain in files that predate it (the CI job stays informational). |
@@ -190,11 +190,22 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_state_persistence.py` | 19 | passing |
 | `tests/test_web_quant.py` | 15 | passing |
 | `tests/test_web_groups.py` (menu follows the structure and the server; new routes) | 16 | passing |
-| **Total** | **773** | **passing** |
+| `tests/test_data_providers.py` (scenarios, Alpaca and IB against fakes, history library) | 18 | passing |
+| **Total** | **791** | **passing** |
 
 ---
 
 ## 6. Pending tasks
+
+**Round four, in progress** (requested: "add a sample data generator, or historical data from a broker (Alpaca or
+IB), or connect a data provider; add a switch for sample data"):
+
+| Step | State |
+|---|---|
+| Data layer: 8 named sample scenarios (`data/synthetic.py`), `SampleDataProvider`, `AlpacaDataProvider` (REST, pages, back-off), `IBDataProvider` (TWS / IB Gateway through optional `ib_async`, chunking within IB pacing), `HistoryLibrary` (`data/library.py`), provider error types | **done, tested** (`test_data_providers`, against fakes) |
+| Platform wiring: market-data service, provider connections with keys in the credential vault, sample-data-only lock, history saved with the platform state | pending |
+| Web: data routes, sample/real switch in the header and on every data form, Data providers page, paper trading replaying real history | pending |
+| Documentation, browser check, CI | pending |
 
 Rounds two and three completed every pending item that can be done from this environment. What is left:
 
@@ -242,6 +253,7 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | headless browser against a live server with `--db-dir`, all eight roles, desktop and 390 px phone width | each role's menu holds exactly its pages; every page's main action works (option chain, sentiment, 7 models, regimes, margin from entered and from paper positions, currency, order book, instrument load, health, audit filter, Bayesian optimisation); a forbidden deep link falls back to Home; phone menu opens and closes; no page wider than the screen; no "null", "undefined" or "NaN" on any page; no JavaScript errors; loaded instruments still there after a server restart |
 | 2026-11-13 | GitHub Actions, workflow "CI", run 24 (commit `a1b58dd`, round three) | lint: success; test 3.10, 3.11, 3.12, 3.13: success; optional-dependencies: success; run conclusion: success; typecheck (informational): failure, 112 findings, same files as locally, none in files added by this work |
 | 2026-11-13 | GitHub Actions, runs 18 to 22 (round two, including pull-request runs 20 and 22) | all success |
+| 2026-11-13 | `cd tests && python -m unittest test_data_providers`; full suite (exit status checked); ruff; structure check; mypy on `data/` | 18 tests OK; **791 tests, OK**; clean; dependency rules OK; no findings in the new data files |
 | 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---

@@ -47,6 +47,19 @@ class MissingDataError(DataError):
     pass
 
 
+class DataProviderError(DataError):
+    """A market-data provider (Alpaca, Interactive Brokers, ...) refused or failed a request."""
+
+
+class ProviderAuthError(DataProviderError):
+    """The provider rejected the credentials: retrying will not help, the keys must be fixed."""
+
+
+class ProviderUnavailableError(DataProviderError):
+    """Rate limit, server error or network failure: worth retrying later."""
+    retryable = True
+
+
 # ---- security --------------------------------------------------------------------
 class AuthError(PlatformError):
     pass
