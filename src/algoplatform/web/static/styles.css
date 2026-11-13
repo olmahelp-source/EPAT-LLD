@@ -85,3 +85,12 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; }
 
 .badge.DONE { color: var(--good); } .badge.ACTIVE { color: var(--warn); } .badge.FAILED, .badge.EXPIRED { color: var(--bad); }
 [hidden] { display: none !important; }
+
+/* governance, alerts and platform map */
+.badge.stage-RESEARCH { color: var(--muted); } .badge.stage-PAPER { color: var(--warn); } .badge.stage-LIVE { color: var(--good); } .badge.stage-RETIRED { color: var(--muted); text-decoration: line-through; }
+.badge.sev-INFO { color: var(--muted); } .badge.sev-WARNING { color: var(--warn); } .badge.sev-ERROR, .badge.sev-CRITICAL { color: var(--bad); }
+.banner.halt table { margin-top: 8px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 12px; }
+details[open] summary { margin-bottom: 8px; }
+code { font-family: var(--mono); font-size: 12px; }
+.cell-text { display: block; text-align: left; white-space: normal; min-width: 200px; }

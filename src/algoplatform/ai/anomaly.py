@@ -11,7 +11,7 @@ from typing import List, Optional
 import numpy as np
 
 from ..core.exceptions import ModelError, ValidationError
-from ..quant.indicators import _pad, _period, _windows
+from ..quant.indicators import _period, _windows
 
 _MAD_TO_SIGMA = 1.4826               # MAD * this = standard deviation, for normal data
 

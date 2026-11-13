@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "algoplatform"
-version = "0.1.0"
-description = "Modular algorithmic trading platform: brokers, OMS, risk, strategies, backtesting, optimisation, analytics"
+version = "0.2.0"
+description = "Modular algorithmic trading platform: brokers, OMS, risk, strategies, quant research, learning, backtesting, optimisation, analytics, governance"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "pandas>=2.0"]
 
 [project.optional-dependencies]
 security = ["cryptography>=42"]
+llm = ["anthropic"]                 # only for sentiment.anthropic_completer; nothing else imports it
 
 [project.scripts]
 algoplatform = "algoplatform.app.cli:main"

@@ -25,6 +25,7 @@ overfitted. Walk-forward validation is still required.
 """
 from __future__ import annotations
 
+import functools
 import math
 import time
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -359,7 +360,7 @@ def cma_es(objective: Objective, space: ParameterSpace, generations: int = 12, p
             y = (rng.normal(size=(lam, n)) * D) @ B.T
             decoded = [cube.valid_decode(mean + sigma * yk, rng) for yk in y]
             scores = np.array(run.evaluate_many(decoded))
-            order = np.argsort(_finite(scores))[::-1][:mu]
+            order = np.argsort(_finite(list(scores)))[::-1][:mu]
             y_sel = (np.array([cube.encode(decoded[i]) for i in order]) - mean) / sigma    # steps actually taken, after clipping
             yw = w @ y_sel
             mean = np.clip(mean + sigma * yw, 0.0, 1.0)
@@ -375,6 +376,10 @@ def cma_es(objective: Objective, space: ParameterSpace, generations: int = 12, p
 
 
 # ---- multi-fidelity ---------------------------------------------------------------------------------------------------------
+def _with_budget(objective: Callable[[Dict[str, Any], float], float], params: Dict[str, Any], budget: float) -> float:
+    return objective(params, budget)
+
+
 def successive_halving(objective: Callable[[Dict[str, Any], float], float], space: ParameterSpace, n_configs: int = 27, min_budget: float = 1.0,
                        max_budget: float = 9.0, eta: int = 3, seed: Optional[int] = 0) -> OptimizationResult:
     """``objective(params, budget)`` scores a configuration using ``budget`` units of some resource (years of history,
@@ -389,7 +394,7 @@ def successive_halving(objective: Callable[[Dict[str, Any], float], float], spac
     while True:
         scored = []
         for params in configs:
-            score, err = _evaluate_safely(lambda p, b=budget: objective(p, b), params)
+            score, err = _evaluate_safely(functools.partial(_with_budget, objective, budget=budget), params)
             rows.append({**params, "budget": budget, "score": score, "error": err})
             scored.append((score, params))
         scored.sort(key=lambda t: t[0], reverse=True)

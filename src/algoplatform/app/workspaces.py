@@ -56,6 +56,11 @@ class Desk:
     def _audit(self, action: str, **details: Any) -> None:
         self.platform.audit.record(self.user.username, action, **details)
 
+    def _saved(self, result: Any = None) -> Any:
+        """Persist the shared services after a change (a no-op without a store) and pass the result through."""
+        self.platform.autosave()
+        return result
+
 
 class ResearchDesk(Desk):
     name, requires = "research", Permission.RUN_BACKTEST
@@ -82,17 +87,17 @@ class ResearchDesk(Desk):
         return manager
 
     def register_strategy(self, strategy_id: str, description: Optional[Dict[str, Any]] = None) -> StrategyRecord:
-        return self.platform.lifecycle.register(self.user, strategy_id, description)
+        return self._saved(self.platform.lifecycle.register(self.user, strategy_id, description))
 
     def propose(self, strategy_id: str, verdict: StrategyVerdict, note: str = "") -> Any:
         """Ask for the strategy to move to the next stage (research -> paper -> live). Someone else must approve."""
-        return self.platform.lifecycle.submit(self.user, strategy_id, verdict, note)
+        return self._saved(self.platform.lifecycle.submit(self.user, strategy_id, verdict, note))
 
     def register_model(self, name: str, model: Any, metrics: Optional[Mapping[str, float]] = None, data: Any = None, **kwargs: Any) -> ModelVersion:
         self._need(Permission.TRAIN_MODEL)
         version = self.platform.models.register(name, model, metrics, data=data, created_by=self.user.username, **kwargs)
         self._audit("model.register", model=name, version=version.version)
-        return version
+        return self._saved(version)
 
 
 class TradingDesk(Desk):
@@ -122,10 +127,11 @@ class TradingDesk(Desk):
         """A personal alert: its notifications go to this user's own channels only."""
         self._need(Permission.MANAGE_ALERTS)
         rule.user_id = self.user.user_id
-        return self.platform.alerts.add(rule)
+        return self._saved(self.platform.alerts.add(rule))
 
     def subscribe(self, channel: Channel, min_severity: Severity = Severity.INFO, topics: Optional[Sequence[str]] = None) -> None:
         self.platform.notifier.subscribe(self.user.user_id, channel, min_severity, topics)
+        self._saved()
 
 
 class PortfolioDesk(Desk):
@@ -140,10 +146,10 @@ class PortfolioDesk(Desk):
         return self.platform.lifecycle.pending()
 
     def approve(self, strategy_id: str, comment: str = "") -> StrategyRecord:
-        return self.platform.lifecycle.approve(self.user, strategy_id, comment)
+        return self._saved(self.platform.lifecycle.approve(self.user, strategy_id, comment))
 
     def reject(self, strategy_id: str, reason: str) -> StrategyRecord:
-        return self.platform.lifecycle.reject(self.user, strategy_id, reason)
+        return self._saved(self.platform.lifecycle.reject(self.user, strategy_id, reason))
 
 
 class RiskDesk(Desk):
@@ -171,14 +177,14 @@ class RiskDesk(Desk):
 
     def demote(self, strategy_id: str, reason: str) -> StrategyRecord:
         """Take a live strategy back to paper trading."""
-        return self.platform.lifecycle.demote(self.user, strategy_id, reason)
+        return self._saved(self.platform.lifecycle.demote(self.user, strategy_id, reason))
 
     def approve(self, strategy_id: str, comment: str = "") -> StrategyRecord:
-        return self.platform.lifecycle.approve(self.user, strategy_id, comment)
+        return self._saved(self.platform.lifecycle.approve(self.user, strategy_id, comment))
 
     def add_alert(self, rule: AlertRule) -> AlertRule:
         self._need(Permission.MANAGE_ALERTS)
-        return self.platform.alerts.add(rule)
+        return self._saved(self.platform.alerts.add(rule))
 
 
 class OperationsDesk(Desk):
@@ -191,19 +197,20 @@ class OperationsDesk(Desk):
         self._need(Permission.MANAGE_ALERTS)
         self.platform.notifier.add_channel(channel, min_severity, topics, **kwargs)
         self._audit("notify.add_channel", channel=channel.name, min_severity=Severity(min_severity).value)
+        self._saved()
 
     def undelivered(self) -> List[Dict[str, Any]]:
         return [{"channel": d.item[0], "title": d.item[1].title, "error": d.error, "attempts": d.attempts} for d in self.platform.notifier.dead_letters.items()]
 
     def replay_undelivered(self) -> Dict[str, int]:
         ok, failed = self.platform.notifier.replay_dead_letters()
-        return {"delivered": ok, "still_failing": failed}
+        return self._saved({"delivered": ok, "still_failing": failed})
 
     def load_instruments(self, records: Sequence[Mapping[str, Any]], on_error: str = "skip") -> Dict[str, Any]:
         self._need(Permission.MANAGE_INSTRUMENTS)
         report = self.platform.instruments.load_records(records, on_error=on_error)
         self._audit("instruments.load", loaded=report["loaded"], rejected=len(report["rejected"]))
-        return report
+        return self._saved(report)
 
     def jobs(self) -> List[Dict[str, Any]]:
         return self.platform.scheduler.jobs()

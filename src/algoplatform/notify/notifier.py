@@ -17,7 +17,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..core import events
 from ..core.enums import Severity
@@ -203,6 +203,61 @@ class Notifier:
                     err = self._deliver(route.channel, again)
                     self.stats["sent" if err is None else "failed"] += 1
         return [n for _, n in due]
+
+    # ---- persistence -----------------------------------------------------------------------------------------------------------------
+    def export_state(self) -> Dict[str, Any]:
+        """Routes, unacknowledged critical notifications and undelivered notifications as plain data.
+
+        A route is stored with its channel's own description where the channel can give one without exposing a secret
+        (:meth:`Channel.config`); otherwise only the channel's name is stored and it must be supplied again on load."""
+        with self._lock:
+            routes = [{"channel": r.channel.name, "config": r.channel.config(), "min_severity": r.min_severity.value,
+                       "topics": list(r.topics) if r.topics is not None else None, "user_id": r.user_id, "include_system": r.include_system,
+                       "rate_limit": [r.limiter.max_calls, r.limiter.period] if r.limiter else None} for r in self.routes]
+            open_ = [n.to_dict() for n, _ in self._open.values()]
+        dead = [{"channel": d.item[0], "notification": d.item[1].to_dict(), "error": d.error, "attempts": d.attempts}
+                for d in self.dead_letters.items("notify")]
+        return {"routes": routes, "open": open_, "dead_letters": dead}
+
+    def import_state(self, state: Mapping[str, Any], channels: Optional[Mapping[str, Channel]] = None) -> Dict[str, Any]:
+        """Restore what :meth:`export_state` wrote. ``channels`` maps a name to a channel object for the routes that
+        could not be stored whole (anything holding a secret). Routes whose channel is neither rebuildable nor supplied
+        are returned under ``unresolved`` so the operator can register them again; they are not silently dropped.
+        Routes already present (same channel name and user) are left as they are."""
+        from .channels import channel_from_config
+        supplied = dict(channels or {})
+        restored, unresolved = 0, []
+        with self._lock:
+            existing = {(r.channel.name, r.user_id) for r in self.routes}
+        for d in state.get("routes", []):
+            name, user_id = d["channel"], d.get("user_id")
+            if (name, user_id) in existing:
+                continue
+            channel = supplied.get(name)
+            if channel is None and d.get("config"):
+                try:
+                    channel = supplied[name] = channel_from_config(d["config"])
+                except Exception as exc:  # noqa: BLE001 - one bad stored route must not stop the others
+                    unresolved.append({"channel": name, "user_id": user_id, "reason": str(exc)})
+                    continue
+            if channel is None:
+                unresolved.append({"channel": name, "user_id": user_id, "reason": "holds a secret and was not stored; register it again"})
+                continue
+            limit = d.get("rate_limit")
+            self.add_channel(channel, Severity(d.get("min_severity", "INFO")), d.get("topics"), user_id, bool(d.get("include_system", True)),
+                             (int(limit[0]), float(limit[1])) if limit else None)
+            existing.add((name, user_id))
+            restored += 1
+        now = self._clock()
+        with self._lock:
+            for nd in state.get("open", []):
+                n = Notification.from_dict(nd)
+                self._open.setdefault(n.id, (n, now))               # the escalation timer restarts from the moment of the restart
+        for dd in state.get("dead_letters", []):
+            self.dead_letters.add((dd["channel"], Notification.from_dict(dd["notification"])), RuntimeError(dd.get("error", "")), "notify",
+                                  int(dd.get("attempts", 1)))
+        return {"routes_restored": restored, "unresolved": unresolved, "open_critical": len(state.get("open", [])),
+                "dead_letters": len(state.get("dead_letters", []))}
 
     # ---- event bus ------------------------------------------------------------------------------------------------------------------
     def bridge(self, bus: EventBus) -> List[Callable[[], None]]:

@@ -84,7 +84,8 @@ class InstrumentMaster:
             df = pd.read_csv(path, dtype=str, keep_default_na=False)
         except (ValueError, pd.errors.ParserError) as exc:
             raise InstrumentError(f"cannot parse {path}: {exc}") from exc
-        return self.load_records(df.to_dict("records"), overwrite, on_error)
+        records: List[Dict[str, Any]] = [{str(k): v for k, v in row.items()} for row in df.to_dict("records")]
+        return self.load_records(records, overwrite, on_error)
 
     # ---- lookup -----------------------------------------------------------------------------------------------------------
     def get(self, symbol: str) -> ContractSpec:
@@ -151,6 +152,16 @@ class InstrumentMaster:
 
     def sectors(self) -> Dict[str, str]:
         return {s.symbol: s.sector for s in self._specs.values() if s.sector}
+
+    # ---- persistence ----------------------------------------------------------------------------------------------------------
+    def export_state(self) -> List[Dict[str, Any]]:
+        """Every record as plain data (JSON-serialisable), for the store."""
+        return [s.to_dict() for s in sorted(self._specs.values(), key=lambda s: s.symbol)]
+
+    def import_state(self, records: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
+        """Load records written by :meth:`export_state`, replacing any with the same symbol. A record that no longer
+        validates is skipped and reported rather than blocking the start-up."""
+        return self.load_records(records, overwrite=True, on_error="skip")
 
 
 def _fields(spec: ContractSpec) -> Dict[str, Any]:

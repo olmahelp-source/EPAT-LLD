@@ -7,7 +7,7 @@ what keeps pattern detection free of look-ahead.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -53,7 +53,7 @@ def last_swing(high, low, kind: str = "high", left: int = 3, right: int = 3) -> 
     return out
 
 
-def support_resistance(high, low, close, left: int = 3, right: int = 3, tolerance: float = 0.01, min_touches: int = 2) -> List[Dict[str, object]]:
+def support_resistance(high, low, close, left: int = 3, right: int = 3, tolerance: float = 0.01, min_touches: int = 2) -> List[Dict[str, Any]]:
     """Cluster confirmed swing prices that lie within ``tolerance`` (fraction of price) of each other into levels.
 
     Returns levels as of the last bar, strongest first. ``kind`` is 'support' when the level is below the last close."""
@@ -61,17 +61,17 @@ def support_resistance(high, low, close, left: int = 3, right: int = 3, toleranc
     swings = swing_points(high, low, left, right)
     if not swings or not len(c):
         return []
-    levels: List[Dict[str, object]] = []
+    levels: List[Dict[str, Any]] = []
     for s in sorted(swings, key=lambda s: s.price):
-        if levels and abs(s.price - levels[-1]["price"]) <= tolerance * levels[-1]["price"]:      # type: ignore[operator]
+        if levels and abs(s.price - levels[-1]["price"]) <= tolerance * levels[-1]["price"]:
             lv = levels[-1]
-            lv["price"] = (lv["price"] * lv["touches"] + s.price) / (lv["touches"] + 1)             # type: ignore[operator]
-            lv["touches"] += 1                                                                    # type: ignore[operator]
-            lv["last_index"] = max(lv["last_index"], s.index)                                    # type: ignore[type-var]
+            lv["price"] = (lv["price"] * lv["touches"] + s.price) / (lv["touches"] + 1)
+            lv["touches"] += 1
+            lv["last_index"] = max(lv["last_index"], s.index)
         else:
             levels.append({"price": s.price, "touches": 1, "last_index": s.index})
-    out = [dict(lv, kind="support" if lv["price"] < c[-1] else "resistance") for lv in levels if lv["touches"] >= min_touches]  # type: ignore[operator]
-    return sorted(out, key=lambda lv: (-lv["touches"], -lv["last_index"]))                        # type: ignore[operator]
+    out = [dict(lv, kind="support" if lv["price"] < c[-1] else "resistance") for lv in levels if lv["touches"] >= min_touches]
+    return sorted(out, key=lambda lv: (-lv["touches"], -lv["last_index"]))
 
 
 def pivot_points(high, low, close, method: str = "classic") -> Dict[str, np.ndarray]:
@@ -103,7 +103,7 @@ def heikin_ashi(open_, high, low, close) -> Dict[str, np.ndarray]:
         ha_o[0] = (o[0] + c[0]) / 2.0
         for i in range(1, len(c)):
             ha_o[i] = (ha_o[i - 1] + ha_c[i - 1]) / 2.0
-    return {"open": ha_o, "high": np.maximum.reduce([h, ha_o, ha_c]), "low": np.minimum.reduce([l, ha_o, ha_c]), "close": ha_c}
+    return {"open": ha_o, "high": np.maximum(np.maximum(h, ha_o), ha_c), "low": np.minimum(np.minimum(l, ha_o), ha_c), "close": ha_c}
 
 
 def fibonacci_levels(swing_low: float, swing_high: float) -> Dict[str, float]:

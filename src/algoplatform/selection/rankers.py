@@ -3,7 +3,7 @@ date) and returns a single number where **higher is better**, or NaN when there 
 from __future__ import annotations
 
 import math
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -100,7 +100,7 @@ def near_high(df: pd.DataFrame, lookback: int = 252) -> float:
 
 
 @ranker("relative_strength")
-def relative_strength(df: pd.DataFrame, benchmark: pd.Series = None, lookback: int = 126) -> float:
+def relative_strength(df: pd.DataFrame, benchmark: Optional[pd.Series] = None, lookback: int = 126) -> float:
     """Return minus the benchmark's return over the same dates."""
     if benchmark is None:
         raise ValidationError("relative_strength needs a benchmark close series")

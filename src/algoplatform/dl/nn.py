@@ -91,7 +91,8 @@ class Dropout(Layer):
         super().__init__()
         if not 0 <= rate < 1:
             raise ValidationError("dropout rate must be in [0, 1)")
-        self.rate, self._rng, self._mask = rate, rng or np.random.default_rng(0), None
+        self.rate, self._rng = rate, rng or np.random.default_rng(0)
+        self._mask: Optional[np.ndarray] = None
 
     def forward(self, x: np.ndarray, training: bool = False) -> np.ndarray:
         if not training or self.rate == 0:

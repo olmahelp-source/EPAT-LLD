@@ -97,7 +97,7 @@ ALLOWED: Dict[str, FrozenSet[str]] = {k: frozenset(v) for k, v in {
     "selection": ("core", "relationships"),
     # portfolio and risk
     "portfolio": _LIBS,
-    "risk": ("core", "utils", "stats", "portfolio"),
+    "risk": ("core", "utils", "stats", "quant", "portfolio"),      # quant: option repricing for scenario margin
     # trading
     "brokers": ("core", "utils", "users"),
     "orders": ("core", "utils", "brokers", "portfolio", "risk"),
@@ -110,13 +110,13 @@ ALLOWED: Dict[str, FrozenSet[str]] = {k: frozenset(v) for k, v in {
     "persistence": ("core", "brokers"),
     "notify": _LIBS,
     "ops": _LIBS,
-    "governance": ("core", "users", "analytics"),
+    "governance": ("core", "utils", "users", "analytics"),
     # application
     "app": ("core", "utils", "users", "data", "instruments", "quant", "technical", "fundamentals", "sentiment", "relationships", "strategy", "selection",
             "portfolio", "risk", "brokers", "orders", "execution", "backtest", "optimize", "analytics", "persistence", "notify", "ops",
             "governance"),
-    "web": ("core", "utils", "users", "data", "fundamentals", "sentiment", "strategy", "portfolio", "risk", "backtest", "optimize",
-            "analytics", "persistence", "app"),
+    "web": ("core", "utils", "users", "data", "technical", "fundamentals", "sentiment", "relationships", "volatility", "strategy", "selection",
+            "portfolio", "risk", "backtest", "optimize", "analytics", "persistence", "notify", "app"),
 }.items()}
 
 # Packages that must stay pure computation: importing any of FORBIDDEN_FOR_LIBRARIES from them is always a violation,

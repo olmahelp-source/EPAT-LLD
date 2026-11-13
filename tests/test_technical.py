@@ -10,7 +10,7 @@ from algoplatform import technical as ta
 from algoplatform.backtest import BacktestEngine
 from algoplatform.core.exceptions import ConfigError, ExpressionError, MissingDataError, StrategyError, ValidationError
 from algoplatform.data import MarketData, synthetic
-from algoplatform.strategy import (ExpressionStrategy, PolicyStrategy, create_from_expressions, expression_factory,
+from algoplatform.strategy import (PolicyStrategy, create_from_expressions, expression_factory,
                                    expression_spec_from_json, expression_spec_to_json, probability_policy)
 from algoplatform.technical import operators as op
 from algoplatform.technical.candles import (doji, engulfing, gap, hammer, inside_bar, marubozu, morning_star, outside_bar,

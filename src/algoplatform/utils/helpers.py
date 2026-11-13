@@ -5,6 +5,8 @@ import itertools
 import math
 import threading
 import uuid
+from datetime import date, datetime
+from enum import Enum
 from typing import Any, Iterable, List, Optional, Sequence, TypeVar
 
 import numpy as np
@@ -93,3 +95,28 @@ def annualize_return(total_return: float, periods: int, per_year: float) -> floa
     if periods <= 0 or total_return <= -1:
         return -1.0 if total_return <= -1 else 0.0
     return (1.0 + total_return) ** (per_year / periods) - 1.0
+
+
+def json_safe(obj: Any) -> Any:
+    """A copy of ``obj`` that any strict JSON encoder accepts: numpy scalars and arrays become Python values, enums
+    their values, dates ISO strings, tuples and sets lists, and non-finite floats ``None`` (JSON has no NaN or
+    infinity). Used when component state is written to the store."""
+    if isinstance(obj, dict):
+        return {str(k): json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(v) for v in obj]
+    if isinstance(obj, (set, frozenset)):
+        return [json_safe(v) for v in sorted(obj, key=str)]
+    if isinstance(obj, Enum):
+        return json_safe(obj.value)
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, np.ndarray):
+        return [json_safe(v) for v in obj.tolist()]
+    if isinstance(obj, np.generic):
+        return json_safe(obj.item())
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if obj is None or isinstance(obj, (str, int, bool)):
+        return obj
+    return str(obj)

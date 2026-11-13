@@ -7,7 +7,7 @@ to last year's winner. ``discount`` < 1 forgets old evidence, which matters beca
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -52,7 +52,7 @@ class _Bandit:
     def best(self) -> str:
         return self.arms[int(np.argmax(self.means))]
 
-    def summary(self) -> List[Dict[str, float]]:
+    def summary(self) -> List[Dict[str, Any]]:
         return [{"arm": a, "n": float(n), "mean": float(m)} for a, n, m in zip(self.arms, self.n, self.means)]
 
     def select(self) -> str:

@@ -1,7 +1,7 @@
 """Unsupervised learning: PCA for compressing correlated features, k-means for grouping similar observations."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -72,7 +72,7 @@ class KMeans:
         if len(X) < self.k:
             raise ValidationError("fewer rows than clusters")
         rng = np.random.default_rng(self.seed)
-        best = (np.inf, None, None)
+        best: Tuple[float, Optional[np.ndarray], Optional[np.ndarray]] = (np.inf, None, None)
         for _ in range(self.n_init):
             centers = [X[rng.integers(len(X))]]
             for _ in range(1, self.k):                                   # k-means++: spread the initial centres out

@@ -46,6 +46,7 @@ class AlertRule:
     cooldown: float = 300.0
     notify_resolved: bool = True
     user_id: Optional[str] = None             # private alert for one user (e.g. a personal price alert)
+    definition: Optional[Dict[str, Any]] = None   # set for rules built from data (``threshold`` and friends): what makes them storable
     # runtime state
     state: AlertState = field(default=AlertState.OK, compare=False)
     streak: int = field(default=0, compare=False)
@@ -83,7 +84,7 @@ def threshold(name: str, metric: str, op: str, value: float, **kwargs: Any) -> A
         v = m.get(metric)
         return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and compare(v, value)
     kwargs.setdefault("message", f"{metric} is {{{metric}}} (limit {op} {value:g})")
-    return AlertRule(name, condition, **kwargs)
+    return AlertRule(name, condition, definition={"kind": "threshold", "metric": metric, "op": op, "value": value}, **kwargs)
 
 
 def price_alert(symbol: str, level: float, direction: str = "above", **kwargs: Any) -> AlertRule:
@@ -148,8 +149,56 @@ class AlertManager:
             raise ValidationError(f"unknown alert rule '{name}'", details={"rules": sorted(self._rules)})
         return self._rules[name]
 
+    # ---- persistence ---------------------------------------------------------------------------------------------------------
+    def export_state(self) -> Dict[str, Any]:
+        """Rules as plain data. Only rules built from data (``threshold``, ``price_alert``, ``drawdown_alert`` ...) can be
+        stored; a rule whose condition is arbitrary code is listed under ``not_storable`` and must be added again in
+        code after a restart."""
+        rules, skipped = [], []
+        for r in self._rules.values():
+            if r.definition is None:
+                skipped.append(r.name)
+                continue
+            rules.append({"name": r.name, "definition": dict(r.definition), "severity": r.severity.value, "message": r.message, "topic": r.topic,
+                          "for_count": r.for_count, "cooldown": r.cooldown, "notify_resolved": r.notify_resolved, "user_id": r.user_id,
+                          "silenced_until": r.silenced_until if r.silenced_until > 0 else None})
+        return {"rules": rules, "not_storable": skipped}
+
+    def import_state(self, state: Mapping[str, Any]) -> Dict[str, Any]:
+        """Restore rules written by :meth:`export_state` (replacing rules of the same name). Each rule starts in the OK
+        state: after a restart a condition must be seen again before it fires. A stored rule that no longer builds is
+        skipped and reported."""
+        restored, failed = 0, []
+        for d in state.get("rules", []):
+            try:
+                definition = d["definition"]
+                if definition.get("kind") != "threshold":
+                    raise ValidationError(f"unknown rule kind '{definition.get('kind')}'")
+                rule = threshold(d["name"], definition["metric"], definition["op"], definition["value"], severity=Severity(d["severity"]),
+                                 message=d.get("message", ""), topic=d.get("topic", "alert"), for_count=int(d.get("for_count", 1)),
+                                 cooldown=float(d.get("cooldown", 300.0)), notify_resolved=bool(d.get("notify_resolved", True)),
+                                 user_id=d.get("user_id"))
+                if d.get("silenced_until"):
+                    rule.silenced_until = float(d["silenced_until"])
+                self.add(rule, replace=True)
+                restored += 1
+            except (KeyError, TypeError, ValueError, ValidationError) as exc:
+                failed.append({"rule": str(d.get("name", "?")), "error": str(exc)})
+        return {"restored": restored, "failed": failed, "not_storable": list(state.get("not_storable", []))}
+
     def states(self) -> Dict[str, Dict[str, Any]]:
         return {n: {"state": r.state.value, "fired": r.fired, "errors": r.errors, "severity": r.severity.value} for n, r in self._rules.items()}
+
+    def describe(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Rules as plain rows for a UI: firm-wide rules plus, when ``user_id`` is given, that user's personal ones
+        (other users' personal rules are never included)."""
+        return [{"name": r.name, "state": r.state.value, "severity": r.severity.value, "topic": r.topic, "personal": r.user_id is not None,
+                 "fired": r.fired, "errors": r.errors, "condition": (f"{r.definition['metric']} {r.definition['op']} {r.definition['value']:g}"
+                                                                     if r.definition else "defined in code"),
+                 "for_count": r.for_count} for r in self._rules.values() if r.user_id is None or r.user_id == user_id]
+
+    def owner(self, name: str) -> Optional[str]:
+        return self._rule(name).user_id
 
     def firing(self) -> List[str]:
         return [n for n, r in self._rules.items() if r.state is AlertState.FIRING]

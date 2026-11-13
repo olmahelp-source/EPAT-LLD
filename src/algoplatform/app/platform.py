@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Sequence
 from ..backtest.engine import BacktestEngine, BacktestResult
 from ..brokers.base import BrokerGateway, create_gateway
 from ..core.config import PlatformConfig
-from ..core.enums import OrderType, Permission, Side
+from ..core.enums import OrderType, Permission, Severity, Side
 from ..core.events import EventBus
 from ..core.exceptions import ConfigError
 from ..core.logging import AuditLog, get_logger, setup_logging
@@ -26,17 +26,21 @@ from ..ops.health import HealthMonitor
 from ..ops.scheduler import Scheduler
 from ..optimize.optimizers import OptimizationResult, backtest_objective, optimize
 from ..optimize.space import ParameterSpace
+from ..persistence.store import SqliteStore
 from ..portfolio.allocation import FundAllocator
 from ..strategy.base import STRATEGIES, Strategy
 from ..strategy.builder import create_from_spec, spec_factory
 from ..users.manager import BrokerAccountManager, User, UserManager
+from ..utils.helpers import json_safe
 from .engine import TradingEngine
 
 log = get_logger(__name__)
 
 
 class TradingPlatform:
-    def __init__(self, config: Optional[PlatformConfig] = None) -> None:
+    def __init__(self, config: Optional[PlatformConfig] = None, store: Optional[SqliteStore] = None) -> None:
+        """``store``: when given, the shared services (instruments, strategy approvals, model registry, alert rules,
+        notification routes) are loaded from it now and written back after every change made through a desk."""
         self.config = config or PlatformConfig()
         setup_logging(self.config.log_level)
         self.bus = EventBus()
@@ -56,6 +60,61 @@ class TradingPlatform:
         self.scheduler = Scheduler()
         self.lifecycle = StrategyLifecycle(self.audit)
         self.models = ModelRegistry()
+        self.store = store
+        self.restore_report: Dict[str, Any] = self.load_state(store) if store is not None else {}
+
+    # ---- durable state of the shared services ---------------------------------------------------
+    def _state_parts(self) -> Dict[str, Any]:
+        return {"instruments": self.instruments, "lifecycle": self.lifecycle, "models": self.models, "alerts": self.alerts,
+                "notifier": self.notifier}
+
+    def save_state(self, store: Optional[SqliteStore] = None) -> Dict[str, Any]:
+        """Write the shared services to the store. Each part is saved on its own, so a part that cannot be serialised
+        is reported and the others are still written. Returns ``{"saved": [...], "errors": {...}}``."""
+        store = store or self.store
+        if store is None:
+            raise ConfigError("no store configured: pass one to save_state() or to TradingPlatform(store=...)")
+        saved, errors = [], {}
+        for name, part in self._state_parts().items():
+            try:
+                store.put(f"platform.{name}", json_safe(part.export_state()))
+                saved.append(name)
+            except Exception as exc:  # noqa: BLE001 - never let one part's failure lose the rest
+                errors[name] = repr(exc)
+                log.error("could not save platform state '%s': %r", name, exc)
+        if errors:
+            self.notifier.notify("Platform state not fully saved", ", ".join(sorted(errors)), Severity.ERROR, "system.persistence",
+                                 key="persistence|" + "|".join(sorted(errors)))
+        return {"saved": saved, "errors": errors}
+
+    def load_state(self, store: Optional[SqliteStore] = None, channels: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Restore the shared services from the store. ``channels`` supplies the notification channels that hold a
+        secret and were therefore not stored (by name). The returned report says what came back and what needs a
+        person: unresolved channels, models whose object must be re-attached, alert rules defined in code."""
+        store = store or self.store
+        if store is None:
+            raise ConfigError("no store configured: pass one to load_state() or to TradingPlatform(store=...)")
+        report: Dict[str, Any] = {}
+        for name, part in self._state_parts().items():
+            try:
+                state = store.get(f"platform.{name}")
+                if state is None:
+                    report[name] = "nothing stored"
+                elif name == "notifier":
+                    report[name] = part.import_state(state, channels)
+                else:
+                    report[name] = part.import_state(state)
+            except Exception as exc:  # noqa: BLE001 - a damaged part must not stop the others from loading
+                report[name] = {"error": repr(exc)}
+                log.error("could not restore platform state '%s': %r", name, exc)
+        report["models_missing_objects"] = self.models.missing_models()
+        return report
+
+    def autosave(self) -> None:
+        """Save if a store is configured. Called by the desks after every change; code that changes a service directly
+        should call it (or :meth:`save_state`) itself."""
+        if self.store is not None:
+            self.save_state(self.store)
 
     # ---- role desks ----------------------------------------------------------------------------
     def desk(self, user: User, name: str):

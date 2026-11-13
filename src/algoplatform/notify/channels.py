@@ -66,6 +66,12 @@ class Channel(abc.ABC):
     def send(self, notification: Notification) -> None:
         """Deliver or raise ``DeliveryError`` (retryable) / ``NotificationError`` (permanent)."""
 
+    def config(self) -> Optional[Dict[str, Any]]:
+        """How to rebuild this channel after a restart, as plain data, or ``None`` when that would mean writing a
+        secret (a webhook URL, a bot token, a password) to the store. Channels returning ``None`` must be registered
+        again by the operator; the notifier reports them as unresolved instead of guessing."""
+        return None
+
     def __repr__(self) -> str:
         return f"<{type(self).__name__} {self.name}>"
 
@@ -83,6 +89,9 @@ class MemoryChannel(Channel):
             self.items.append(notification)
             del self.items[:-self.maxlen]
 
+    def config(self) -> Optional[Dict[str, Any]]:
+        return {"type": "memory", "name": self.name, "maxlen": self.maxlen}
+
 
 class LogChannel(Channel):
     """Writes to the platform log at the level matching the severity."""
@@ -92,6 +101,9 @@ class LogChannel(Channel):
 
     def send(self, notification: Notification) -> None:
         log.log(_LEVELS[notification.severity.value], "NOTIFY %s | %s | %s", notification.topic, notification.title, notification.body)
+
+    def config(self) -> Optional[Dict[str, Any]]:
+        return {"type": "log", "name": self.name}
 
 
 class FileChannel(Channel):
@@ -109,6 +121,9 @@ class FileChannel(Channel):
                 os.fsync(fh.fileno())
         except OSError as exc:
             raise DeliveryError(f"cannot write notification file: {exc.strerror}") from exc
+
+    def config(self) -> Optional[Dict[str, Any]]:
+        return {"type": "file", "name": self.name, "path": self.path}
 
 
 class WebhookChannel(Channel):
@@ -197,3 +212,15 @@ class EmailChannel(Channel):
 
     def __repr__(self) -> str:
         return f"<EmailChannel {self.name} host={self.host} to={len(self.recipients)}>"
+
+
+def channel_from_config(cfg: Mapping[str, Any]) -> Channel:
+    """Rebuild a channel from :meth:`Channel.config`. Only the channel types that hold no secret can be rebuilt."""
+    kind = cfg.get("type")
+    if kind == "memory":
+        return MemoryChannel(cfg["name"], int(cfg.get("maxlen", 1000)))
+    if kind == "log":
+        return LogChannel(cfg["name"])
+    if kind == "file":
+        return FileChannel(cfg["path"], cfg["name"])
+    raise ConfigError(f"channel type '{kind}' cannot be rebuilt from stored configuration", details={"rebuildable": ["memory", "log", "file"]})

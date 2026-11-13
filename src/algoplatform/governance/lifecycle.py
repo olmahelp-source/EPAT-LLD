@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
@@ -28,6 +28,7 @@ from ..core.enums import Permission
 from ..core.exceptions import GovernanceError
 from ..core.logging import AuditLog
 from ..users.manager import User, UserManager
+from ..utils.helpers import json_safe
 
 
 class Stage(str, Enum):
@@ -189,3 +190,32 @@ class StrategyLifecycle:
 
     def records(self) -> List[StrategyRecord]:
         return list(self._records.values())
+
+    # ---- persistence ---------------------------------------------------------------------------------------------------------
+    def export_state(self) -> List[Dict[str, Any]]:
+        """Every strategy record as plain data: stage, when it got there, the pending request with its evidence, and
+        the full history of decisions."""
+        out = []
+        with self._lock:
+            for r in self._records.values():
+                p = r.pending
+                out.append(json_safe({
+                    "strategy_id": r.strategy_id, "owner": r.owner, "description": r.description, "stage": r.stage.value,
+                    "stage_since": r.stage_since, "history": r.history,
+                    "pending": None if p is None else {"target": p.target.value, "submitted_by": p.submitted_by, "submitted_at": p.submitted_at,
+                                                       "evidence": p.evidence, "note": p.note}}))
+        return out
+
+    def import_state(self, records: List[Dict[str, Any]]) -> int:
+        """Restore records written by :meth:`export_state`. Approvals already given stay given: a strategy that was LIVE
+        before the restart is LIVE after it, and a pending request is still pending for a second person to decide."""
+        with self._lock:
+            for d in records:
+                p = d.get("pending")
+                pending = None if not p else PromotionRequest(Stage(p["target"]), p["submitted_by"], datetime.fromisoformat(p["submitted_at"]),
+                                                              dict(p.get("evidence") or {}), p.get("note", ""))
+                since = d.get("stage_since")
+                self._records[d["strategy_id"]] = StrategyRecord(d["strategy_id"], d["owner"], dict(d.get("description") or {}), Stage(d["stage"]),
+                                                                 datetime.fromisoformat(since) if since else None, pending,
+                                                                 list(d.get("history") or []))
+        return len(records)
