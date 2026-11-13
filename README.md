@@ -13,7 +13,7 @@ python -m algoplatform backtest --strategy zscore_reversion --html report.html
 python -m algoplatform optimize --strategy sma_crossover --method bayesian     # also: grid random genetic tpe pso de annealing cmaes
 python -m algoplatform structure    # the job groups, their packages and roles; --check verifies the dependency rules
 python -m algoplatform functions    # every indicator, pattern and operator usable in a formula
-cd tests && python -m unittest discover -p "test_*.py"     # 680+ tests (CI runs Python 3.10-3.13)
+cd tests && python -m unittest discover -p "test_*.py"     # 750+ tests (CI runs Python 3.10-3.13)
 ```
 
 Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structure by job, dependency rules, roles and desks) and
@@ -23,7 +23,7 @@ Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structure by jo
 
 ```
 PYTHONPATH=src python -m algoplatform.web --port 8080                    # then open http://127.0.0.1:8080
-PYTHONPATH=src python -m algoplatform.web --port 8080 --db-dir ./state   # users and paper sessions survive a restart
+PYTHONPATH=src python -m algoplatform.web --port 8080 --db-dir ./state   # users, sessions, approvals and alerts survive a restart
 ```
 Standard-library server plus a no-build single-page UI (`src/algoplatform/web/`). Tabs:
 
@@ -33,12 +33,20 @@ Standard-library server plus a no-build single-page UI (`src/algoplatform/web/`)
 - **Portfolio**: several strategies on shared capital (opposing views net out), standalone vs combined results, contribution, correlation, and suggested allocations you can apply with one click.
 - **Data**: upload OHLCV CSVs (validated, capped, private to you).
 - **Paper trading**: simulated broker on a synthetic feed with simulated time. Order ticket with optional execution algos (TWAP, VWAP, POV, iceberg, implementation shortfall), per-order cancel, parent-order cost analysis, positions, VaR and stress tests, risk meters, kill switch. Updates are pushed over Server-Sent Events, and the controls are not redrawn, so typing is never interrupted.
+- **Technical lab**: run a formula over the whole history (any of the 118 catalogue functions), see the chart patterns and candlesticks found, support and resistance levels, and a searchable function reference.
+- **Volatility**: five estimators, a volatility cone, an out-of-sample league of forecasting models, and the exposure multiplier for a volatility target.
+- **Selection**: rank a universe by any blend of rankers with a correlation limit; scores, the reason each instrument was left out, cointegrated pairs, lead-lag and the effective number of bets.
+- **Governance**: register a strategy, score it, propose it for paper or live; approvers see pending requests with the scorecard and approve, reject or demote. The submitter can never approve.
+- **Alerts & inbox**: personal and firm-wide alert rules checked after every paper-trading bar, your own notifications, platform notifications, and unacknowledged critical alerts that a risk manager or operations user must acknowledge.
 - **Admin & audit**: audit log, role management.
+- **Platform map**: your role and desks, the job groups and packages, and whether the dependency rules hold.
+
+Each role sees only the tabs it can use: research tabs need `backtest:run`, paper trading needs `order:place`, so a viewer or auditor sees governance, alerts and the map only.
 
 - The first account created becomes the administrator; later sign-ups are traders. Raise roles in the Admin tab (a Risk Manager or Admin is needed to reset a tripped kill switch).
 - Every call goes through `TradingPlatform`, so permissions are enforced server-side, not just hidden in the UI. Server text is rendered with `textContent` only, responses carry CSP and no-sniff headers, and the stream authenticates with a header (never a URL token).
 - **Localhost only.** There is no TLS. Do not expose it to a network without a TLS reverse proxy and your own auth in front. Uploaded data lives in server memory.
-- API: see `web/server.py` (`/api/backtest|optimize|walkforward|portfolio|data/*|session/*|audit|users/*`).
+- API: see `web/server.py` (`/api/backtest|optimize|walkforward|portfolio|data/*|session/*|audit|users/*`) and `web/quant_api.py` (`/api/lab/*|governance/*|inbox/*|alerts/*|structure|functions`).
 
 ## Architecture
 
@@ -97,12 +105,12 @@ Layers only depend downward; strategies never see orders or brokers, risk never 
 | `notify` | Notifications and alerts | log / memory / file / webhook / Slack / Telegram / e-mail channels, `Notifier` (retry, dedupe, private routing, rate limit, dead letters, escalation), `AlertManager` and rule factories |
 | `ops` | Operations | `HealthMonitor` (checks, heartbeats), `Scheduler` (interval and daily jobs on the platform clock) |
 | `governance` | Control | `StrategyLifecycle` (research, paper, live; four-eyes approval), `ModelRegistry` (versions, data fingerprint, rollback) |
-| `brokers` | Venue connectivity | `BrokerGateway` ABC + registry, `PaperBroker` (matching, bracket/OCO/OTO, trailing stops, impact costs), `CostModel`, `ResilientGateway` (retry/breaker/failover), REST adapters `AlpacaGateway` / `ZerodhaGateway` / `BinanceGateway`, `brokers.fix` (FIX 4.4 wire format, session layer, `FixGateway`, test exchange) |
+| `brokers` | Venue connectivity | `BrokerGateway` ABC + registry, `PaperBroker` (matching, bracket/OCO/OTO, trailing stops, impact costs), `CostModel`, `ResilientGateway` (retry/breaker/failover), REST adapters `AlpacaGateway` / `ZerodhaGateway` / `BinanceGateway`, `brokers.fix` (FIX 4.4 wire format, session layer, `FixGateway`, test exchange), `OrderBook` (price-time matching, IOC/FOK, post-only, self-trade prevention, queue position, cost to trade) and `MarketSimulator` (seeded tick flow with latency, `ticks_to_bars`) |
 | `orders` | Order management | `OrderManager` (state machine, idempotent ids, duplicate/late fills, reconcile, restore), `ExecutionService` (+ bracket/OCO) |
 | `execution` | Execution algos | TWAP, VWAP, POV, iceberg, implementation shortfall, `AlgoExecutionManager` (children go through risk), limit-price logic, pre-trade cost / go-no-go |
-| `persistence` | Durability | `SqliteStore` (WAL, migrations, event journal), `Journal`, `recover` (rebuild OMS/portfolio/kill switch, reconcile with the broker, halt on any break) |
-| `risk` | Separate risk layer | pre-trade checks, `KillSwitch` (two-person reset), `RiskMonitor`, `RiskManager`, VaR/ES/Kupiec/stress |
-| `portfolio` | Positions, sizing, allocation | `Portfolio` ledger, sizers (fixed-fractional, vol-target, risk-per-trade, Kelly, optimal-f), `FundAllocator`, optimisers (min-var, risk-parity, max-Sharpe, Black-Litterman) |
+| `persistence` | Durability | `SqliteStore` (WAL, migrations, event journal), `Journal`, `recover` (rebuild OMS/portfolio/kill switch, reconcile with the broker, halt on any break); `TradingPlatform(store=...)` also saves and restores instruments, strategy approvals, the model registry, alert rules and notification routes |
+| `risk` | Separate risk layer | pre-trade checks, `KillSwitch` (two-person reset), `RiskMonitor`, `RiskManager`, VaR/ES/Kupiec/stress, margin (rule-based and scenario / risk-array, account report, liquidation price, `MarginCheck` that never blocks risk reduction) |
+| `portfolio` | Positions, sizing, allocation | `Portfolio` ledger, sizers (fixed-fractional, vol-target, risk-per-trade, Kelly, optimal-f), `FundAllocator`, optimisers (min-var, risk-parity, max-Sharpe, Black-Litterman), multi-currency (`FxRates` with point-in-time and cross rates, `CashLedger` per currency, exposure by currency, FX P&L attribution, hedge amounts) |
 | `strategy` | Strategy SDK + creators | `Strategy` ABC, built-ins (trend, reversion, breakout, momentum, pairs, `MLStrategy`), `StrategyBuilder` (JSON rules, no `eval`), `ExpressionStrategy` (formulas over the whole catalogue), `PolicyStrategy` (adapter for any model) |
 | `research` | ML and signal research | triple-barrier and meta labels, sample weights, sequential bootstrap, purged / combinatorial CV, PBO, fractional differentiation, causal features, models, drift |
 | `fundamentals` | Fundamental analysis | point-in-time statements, ratios, DuPont, Piotroski / Altman / Beneish, DCF + sensitivity + reverse DCF, factor scoring, `FactorStrategy` |
@@ -272,7 +280,7 @@ engine = plat.open_session(trader, acc.account_id, [(SMACrossover(["AAA"]), 1.0)
 
 ## Honest limits
 
-- **Simulated fills are bar-based** (open/limit/stop touch, volume participation, square-root impact scaled by recent volatility). There is no order-book queue or latency simulation, so high-frequency strategies are out of scope. Execution algos are tested at bar granularity.
+- **Simulated fills are bar-based** (open/limit/stop touch, volume participation, square-root impact scaled by recent volatility). The trading engine and backtester run on bars. `brokers.OrderBook` and `MarketSimulator` add a real matching engine with queue position and latency for execution research, but the background order flow is random ("zero intelligence"), so it shows mechanics, not real market behaviour, and the engine does not yet run tick by tick.
 - **Broker connectivity is verified only against fakes.** The Alpaca, Zerodha and Binance adapters follow the brokers' public API shapes and are tested against a scripted fake transport; the FIX gateway against an in-memory exchange and a localhost socket. None has been run against a live or sandbox broker. FIX is a working order-entry subset, not a certified implementation. Zerodha has no sandbox, so the adapter refuses `paper=True`. Test each adapter in the broker's sandbox, with tiny size, before anything else.
 - **Credentials** are encrypted at rest only if the optional `cryptography` package is installed; otherwise they live in memory only and are never logged.
 - **Persistence** is a single-process SQLite file: no replication or failover. The simulated paper broker is rebuilt from the journal; a real broker keeps its own state, which recovery reconciles against.
@@ -283,14 +291,16 @@ engine = plat.open_session(trader, acc.account_id, [(SMACrossover(["AAA"]), 1.0)
 - **Cointegration, lead-lag and formula searches test many candidates.** Results carry the number tested and the false positives expected by chance; treat them as candidates to validate.
 - **Fundamentals and sentiment** ship the models and the point-in-time handling, not data feeds. The sentiment lexicon is deliberately simple and auditable, not a trained language model.
 - **Options** are priced with Black-Scholes, binomial trees, Monte Carlo and SVI, with Greeks and expiry settlement helpers. `OptionChain` analyses quotes you supply; there is no option-chain data feed, margin model, or live assignment/exercise management.
-- **Not built:** a margin model (SPAN / portfolio margin), multi-currency accounting, tick or order-book simulation.
+- **Margin** follows the two standard methods (fixed percentages, and a scenario grid that revalues each underlying's positions together), but its parameters are typical defaults, not any exchange's or broker's schedule. Load the real numbers before using it for live sizing.
+- **Multi-currency** accounting sits beside the position ledger: `Portfolio` keeps one cash figure and each position in its instrument's own currency; `CashLedger` and `portfolio_currency_exposure` give the per-currency view. The engine does not convert P&L automatically.
 - **Parallel search** works for registry or rule-spec strategies through `make_parallel_objective`; walk-forward is still serial.
-- **The web UI is for localhost.** No TLS; uploaded data lives in server memory.
+- **The web UI is for localhost.** No TLS; uploaded data lives in server memory. Alert rules are evaluated against the paper-trading session that is stepping, so with several users trading at once a firm-wide metric alert sees whichever session moved last.
+- **What a restart keeps.** With a store, notification channels that hold a secret (webhook URL, bot token, e-mail password) are deliberately not written to disk and must be registered again; the restore report lists them. Fitted model objects are not pickled: restored registry versions must have their model re-attached, which is checked against the training-data fingerprint. Alert rules defined in code (rather than as thresholds) must be added again.
 - **Backtests use the data you supply.** Synthetic data is for tests and demos and says nothing about real markets. Measured here: about 0.1 s per 1,000 bars per symbol for a simple strategy; model-based and rule-heavy strategies are slower.
 - Research code, not investment advice. Paper trade for an extended period before risking capital.
 
 ## Topic coverage (from the master list)
 
 Strong: order lifecycle and idempotency (13.2), pre-trade controls (13.3), execution algos, order types and TCA (13.4-13.5, 13.12, 15.8), connectivity incl. FIX and broker abstraction (13.7), kill switch and restart recovery (12.1, 13.2), position sizing (11.4), portfolio optimisation (11.1), VaR/ES/stress (12.2), backtesting and bias control (10.x), statistical validation incl. deflated Sharpe, PBO and purged CV (2.1-2.2, 8.1), signal analytics (15.10), fundamentals and valuation (Part 4), news sentiment (6.1), options pricing and hedging (9.1), performance analytics (15.x), strategy SDK (7.3), user/RBAC and audit (16.6, 17.x), technical indicators and pattern recognition, volatility estimation and forecasting, relationship analysis, instrument selection, parameter optimisation, notifications and alerting, strategy and model governance.
-Partial: derivatives beyond options (futures roll is covered; fixed income and FX specifics are not), data engineering (in-memory store, SQLite journal), machine, deep and reinforcement learning (numpy implementations for daily data), language models (sentiment scoring only), smart order routing across venues.
-Not included: alternative-data feeds, crypto DeFi, SPAN/portfolio margin, multi-currency accounting, HFT latency engineering.
+Partial: derivatives beyond options (futures roll is covered; fixed income and FX specifics are not), data engineering (in-memory store, SQLite journal), machine, deep and reinforcement learning (numpy implementations for daily data), language models (sentiment scoring only), smart order routing across venues, margin (both methods, default parameters), multi-currency accounting (beside the ledger, not inside the engine), order-book simulation (a laboratory, not a tick-driven backtester).
+Not included: alternative-data feeds, crypto DeFi, exchange-certified SPAN files, HFT latency engineering on real infrastructure.

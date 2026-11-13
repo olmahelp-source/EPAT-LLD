@@ -3,15 +3,12 @@
 This file is the single source of truth for what has been built, what has been verified, and what is still pending.
 It is updated at the end of every unit of work. Rules for keeping it honest are in [`CLAUDE.md`](CLAUDE.md).
 
-**Last updated:** 2026-11-12, after the final verification run and the CI confirmation
+**Last updated:** 2026-11-13, after the second round of pending tasks
 **Working branch:** `ccr-b7d3820c-a4gug7`
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
-**Merge state.** Pull request #2 merged the first four commits of this work (all source code and all tests) into the
-default branch. Three later commits are on the working branch only and still need a pull request:
-"Add architecture document, quant-lab example and README update; clean lint findings", "Update the progress record to
-the verified final state" and "Record the CI result and the merge state". Until they are merged, the default branch
-lacks the documentation, the example script and the six lint fixes (its lint job fails on unused imports).
+**Merge state.** Pull request #2 merged the first part of this work (all source and tests up to that point). Everything
+after it is on the working branch, which already contains the default branch, and goes in through the next pull request.
 
 ---
 
@@ -19,18 +16,17 @@ lacks the documentation, the example script and the six lint fixes (its lint job
 
 | Area | State |
 |---|---|
-| Source code for every requested item | **Done.** 71 new source files (about 10,300 lines) and 17 modified source files. |
-| Tests for the new code | **Done and passing.** 8 new test files, 277 tests (about 3,900 lines). |
-| Whole test-suite | **684 tests pass** (407 original + 277 new), with deprecation warnings treated as errors. |
+| Every item of the original request | **Done.** Code and passing tests for all 27 items. |
+| Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
+| Size of the work | 75 new source files and 23 modified ones (about 12,300 lines of source, 5,100 lines of tests), on top of the original platform. |
+| Whole test-suite | **757 tests pass** (407 original + 350 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
-| Linter (`ruff`, the project's configuration) | **Clean.** |
-| Example scripts | **All three run** (`run_demo`, `run_advanced`, `run_quant_lab`). |
-| Documentation | **Done.** `README.md` updated; `docs/ARCHITECTURE.md` added. |
-| Committed and pushed | **Yes** (working branch; see the merge state above). |
-| Continuous integration | **Confirmed on GitHub Actions** for the commit that holds all code and documentation: lint, tests on Python 3.10, 3.11, 3.12 and 3.13, and the optional-dependencies job all succeeded. |
-| Type-check job (`mypy`) | **Fails, as it did before this work.** The workflow marks it informational (`continue-on-error`). 112 findings are in files that existed before, 66 are in new files. All are annotation-precision findings; the attribute-related ones were reviewed and none is a runtime defect. |
-
-Nothing in this file is marked done without a command in section 7 that proves it.
+| Linter (`ruff`) | **Clean.** |
+| Type checker (`mypy`) | **No findings in the files added by this work.** 113 findings remain in files that predate it (the CI job stays informational). |
+| Web UI | **Done.** Six new tabs, checked in a headless browser as five different roles. |
+| Restart safety of the shared services | **Done.** |
+| Example scripts | All three run. |
+| CI on GitHub | Passed (lint and tests on Python 3.10 to 3.13) for every pushed commit since the lint fixes; see section 7. |
 
 ---
 
@@ -55,9 +51,10 @@ repository.
 | Market-regime detection | **Added:** `ai/hmm.py`, `volatility/management.py` |
 | Overfitting control (walk-forward, deflated Sharpe, purged CV) | Already present: `optimize`, `stats`, `research`; scorecard **added** in `analytics/evaluation.py` |
 | Enforced separation of concerns | **Added:** `architecture.py` (allow-list of dependencies, checked by a test) |
-| Margin model (SPAN / portfolio margin) | **Not built.** Only `ContractSpec.margin_pct` exists. |
-| Multi-currency accounting and FX conversion | **Not built.** |
-| Tick / order-book data and latency simulation | **Not built** (bar-based platform; stated in the README limits). |
+| Margin model (scenario / portfolio margin) | **Added (round two):** `risk/margin.py`; default parameters, not an exchange schedule |
+| Multi-currency accounting and FX conversion | **Added (round two):** `portfolio/currency.py` |
+| Tick / order-book data and latency simulation | **Added (round two):** `brokers/orderbook.py`; a laboratory beside the bar-based engine |
+| Restart safety of approvals, alerts, routes, instruments, models | **Added (round two):** `TradingPlatform(store=...)` |
 | Live broker certification | **Not possible here.** Adapters are tested against fakes only. |
 
 ---
@@ -97,6 +94,11 @@ repository.
 | - | One platform, different roles | `app/workspaces.py`: research, trading, portfolio, risk, operations, compliance, admin desks | done | passing (`test_architecture_desks`) |
 | - | Structure grouped by job | `architecture.py`: 12 job groups, dependency allow-list, `check_architecture()` | done | passing (`test_architecture_desks`) |
 | - | Operations and governance (from the gap analysis) | `ops`, `governance` | done | passing (`test_notify_ops_governance`) |
+| - | Margin (from the gap analysis) | `risk/margin.py`: rule-based and scenario margin, account report, liquidation price, pre-trade `MarginCheck` | done | passing (`test_margin_currency_orderbook`) |
+| - | Multi-currency accounting (from the gap analysis) | `portfolio/currency.py`: point-in-time FX rates with cross rates, cash per currency, exposure, FX P&L attribution, hedge amounts | done | passing (`test_margin_currency_orderbook`) |
+| - | Order book and tick simulation (from the gap analysis) | `brokers/orderbook.py`: matching engine, queue position, cost to trade, seeded simulator with latency, tick-to-bar | done | passing (`test_margin_currency_orderbook`) |
+| - | Restart safety of the shared services | `save_state` / `load_state` / autosave in `app/platform.py`; `export_state` / `import_state` on each service | done | passing (`test_state_persistence`, `test_web_quant`) |
+| - | Web UI for the new features | `web/quant_api.py`, six tabs in `web/static/app.js` | done | passing (`test_web_quant`); browser walkthrough |
 
 ---
 
@@ -149,6 +151,7 @@ Each package also has an `__init__.py` that exports its public names.
 
 ### New files in existing packages
 
+`risk/margin.py`, `portfolio/currency.py`, `brokers/orderbook.py`, `web/quant_api.py` (round two);
 `utils/resilience.py`, `utils/numeric.py`, `derivatives/chain.py`, `optimize/advanced.py`, `analytics/evaluation.py`,
 `sentiment/llm.py`, `strategy/expression.py`, `strategy/policy.py`, `app/workspaces.py`, and the top-level
 `architecture.py`.
@@ -180,26 +183,26 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_search_selection_evaluation.py` | 30 | passing |
 | `tests/test_notify_ops_governance.py` (incl. `sentiment/llm.py`) | 46 | passing |
 | `tests/test_architecture_desks.py` | 26 | passing |
-| **Total** | **684** | **passing** |
+| `tests/test_margin_currency_orderbook.py` | 39 | passing |
+| `tests/test_state_persistence.py` | 19 | passing |
+| `tests/test_web_quant.py` | 15 | passing |
+| **Total** | **757** | **passing** |
 
 ---
 
 ## 6. Pending tasks
 
-Nothing from the original request is pending. What remains, in order of value; none of it is started.
+Round two completed every pending item that can be done from this environment. What is left:
 
-1. **Open and merge a pull request** for the three commits made after pull request #2 (see the merge state at the top).
-2. **Web UI for the new features.** The browser UI still shows the original tabs. The new packages are reachable from
-   Python and the CLI only. Only the role list in the UI was updated.
-3. **Persist the new shared services.** Notification routes, alert rules, strategy lifecycle records, the model
-   registry and the instrument master live in memory; they are not yet written to the SQLite store, so they do not
-   survive a restart (orders, fills, positions and the kill switch do).
-4. **Run the integrations against real services** before relying on them: the Claude sentiment client, Slack,
-   Telegram, webhook and e-mail channels. All are tested against fakes only.
-5. **Type annotations.** Clear the 66 `mypy` findings in the new files (and, separately, the 112 older ones) so the
-   type-check job can become blocking.
-6. **Not built, by decision:** margin model, multi-currency accounting, tick / order-book simulation.
-7. Optional: move packages into one directory per job group (see the note in section 4).
+| # | Task | State | Why it is not done |
+|---|---|---|---|
+| 1 | Merge the second pull request into the default branch | **waiting for the owner** | Opening it is done by me; merging into the default branch is the repository owner's decision, as with pull request #2. |
+| 2 | Run the integrations against real services: Claude sentiment client, Slack, Telegram, webhook, e-mail, broker sandboxes | **blocked** | Needs the owner's credentials and accounts; nothing here should send messages or orders to real services. All are tested against fakes. |
+| 3 | Type findings in the 113 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
+| 4 | Move packages into one folder per job group | not started, optional | Changes every import path; a decision for the owner. The grouping is already enforced by `architecture.py`. |
+
+Done in round two (previously pending): web UI for the new features; persistence of the new shared services; type
+findings in new files; margin model; multi-currency accounting; order-book and tick simulator; documentation.
 
 ---
 
@@ -219,6 +222,11 @@ Nothing from the original request is pending. What remains, in order of value; n
 | 2026-11-12 | GitHub Actions, workflow "CI", run 11 (all code, tests, documentation and lint fixes) | lint: success; test 3.10, 3.11, 3.12, 3.13: success; optional-dependencies: success; typecheck (informational): failure |
 | 2026-11-12 | GitHub Actions, runs 6 to 9 (commits before the lint fixes) | failed in the lint job only: six unused imports, since removed |
 | 2026-11-12 | `python -m mypy src/algoplatform` | 178 findings in 50 files: 112 in pre-existing files, 66 in new files |
+| 2026-11-13 | `cd tests && python -m unittest test_margin_currency_orderbook test_state_persistence test_web_quant` | 39 + 19 + 15 tests, OK |
+| 2026-11-13 | full suite with deprecation warnings as errors (exit status checked) | **757 tests, OK** |
+| 2026-11-13 | `python -m mypy src/algoplatform` | 0 findings in new files; 113 in pre-existing files |
+| 2026-11-13 | `python -m ruff check .`; `python -m algoplatform structure --check` | clean; dependency rules OK |
+| 2026-11-13 | headless browser (Playwright) against a live server: quant, trader, portfolio manager, risk manager, viewer | every new tab loads and works; tabs hidden from roles that cannot use them; a personal alert fired into the trader's inbox; the trader could not acknowledge a kill-switch alert, the risk manager could; no layout overflow at phone width; no JavaScript errors |
 
 ---
 
@@ -234,6 +242,13 @@ Found by the new tests:
 - `analytics.regime_breakdown` let a pandas `ValueError` escape for a label / return length mismatch; it now raises
   `ValidationError`.
 - The VIEWER role could open no desk at all; it now has the read-only risk snapshot.
+
+Found in round two:
+
+- The governance form in the UI lost the typed strategy id after registering (the form was rebuilt on reload).
+- The Paper trading and research tabs were shown to roles that cannot use them (a viewer saw Backtest).
+- A web test assumed an exact catalogue size; it was committed once with that failure because a chained shell
+  command did not stop on it. Fixed in the next commit; the full suite's exit status is now checked before committing.
 
 Found during development, before the tests were written:
 
@@ -257,4 +272,8 @@ that a 90% interval always contains zero for one random sample).
 - Notification channels (Slack, Telegram, webhook, e-mail) are tested against injected fakes, never a real service.
 - Chart-pattern detection is rule-based on confirmed swings; thresholds are parameters, not calibrated truths.
 - Broker adapters are tested against fakes only (unchanged from before this work).
-- No margin model, no multi-currency accounting, no tick or order-book simulation.
+- Margin parameters are typical defaults, not an exchange's or broker's schedule.
+- Multi-currency accounting sits beside the ledger; the engine does not convert P&L between currencies by itself.
+- The order-book simulator's background flow is random; the engine and backtester still run on bars.
+- After a restart, channels holding secrets, fitted model objects and alert rules written as code must be supplied
+  again; the restore report lists them.

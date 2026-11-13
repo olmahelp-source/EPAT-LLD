@@ -68,9 +68,9 @@ The invariants behind the list:
 4. **`risk` never knows which strategy produced an order. `brokers` only translate and emit events.**
 5. Only `app` and `web` see everything. Nothing imports `web`.
 
-Two exceptions are deliberate and documented in the allow-list: `fundamentals` and `sentiment` each ship a `Strategy`
+Deliberate exceptions, each documented in the allow-list: `fundamentals` and `sentiment` each ship a `Strategy`
 adapter, so they import `strategy`; `backtest` imports `app` because it reuses the live engine rather than keeping a
-second, slightly different one.
+second, slightly different one; `risk` imports `quant` because scenario margin reprices options.
 
 | Package | May import |
 |---|---|
@@ -95,7 +95,7 @@ second, slightly different one.
 | `strategy` | `core`, `quant`, `research`, `stats`, `technical` |
 | `selection` | `core`, `relationships` |
 | `portfolio` | `core`, `utils` |
-| `risk` | `core`, `portfolio`, `stats`, `utils` |
+| `risk` | `core`, `portfolio`, `quant`, `stats`, `utils` |
 | `brokers` | `core`, `users`, `utils` |
 | `orders` | `brokers`, `core`, `portfolio`, `risk`, `utils` |
 | `execution` | `brokers`, `core`, `orders`, `quant`, `utils` |
@@ -105,9 +105,9 @@ second, slightly different one.
 | `persistence` | `brokers`, `core` |
 | `notify` | `core`, `utils` |
 | `ops` | `core`, `utils` |
-| `governance` | `analytics`, `core`, `users` |
+| `governance` | `analytics`, `core`, `users`, `utils` |
 | `app` | `analytics`, `backtest`, `brokers`, `core`, `data`, `execution`, `fundamentals`, `governance`, `instruments`, `notify`, `ops`, `optimize`, `orders`, `persistence`, `portfolio`, `quant`, `relationships`, `risk`, `selection`, `sentiment`, `strategy`, `technical`, `users`, `utils` |
-| `web` | `analytics`, `app`, `backtest`, `core`, `data`, `fundamentals`, `optimize`, `persistence`, `portfolio`, `risk`, `sentiment`, `strategy`, `users`, `utils` |
+| `web` | `analytics`, `app`, `backtest`, `core`, `data`, `fundamentals`, `notify`, `optimize`, `persistence`, `portfolio`, `relationships`, `risk`, `selection`, `sentiment`, `strategy`, `technical`, `users`, `utils`, `volatility` |
 
 ## 4. One platform, different roles
 
@@ -212,3 +212,15 @@ job) never stops the others, and an error whose action is HALT (kill switch, bad
 | a notification channel | subclass `notify.Channel`; raise `DeliveryError` for transient failures, `NotificationError` for permanent ones |
 | an alert | `notify.threshold(...)` or an `AlertRule` with any condition over the metrics dictionary |
 | a package | create it, assign it to a job group and give it an allow-list in `architecture.py` |
+
+## 7. State that survives a restart
+
+| What | Where it is kept | Notes |
+|---|---|---|
+| Orders, fills, positions, kill-switch state | engine journal (`persistence`), one SQLite file per session | rebuilt and reconciled with the broker on start-up; any mismatch halts trading |
+| Users and roles | web server's `app.db` | password hashes only |
+| Instruments, strategy approvals and their history, model registry metadata, alert rules, notification routes, open critical alerts, undelivered notifications | `TradingPlatform(store=...)`, key `platform.*` | loaded at start-up, saved after every change made through a desk; each part loads independently |
+| Notification channels holding a secret | **not stored** | listed as unresolved after a restart; register them again |
+| Fitted model objects | **not stored** (no pickling) | re-attach with `ModelRegistry.attach`, checked against the training-data fingerprint |
+| Alert rules written as code | **not stored** | only threshold-style rules can be written down |
+
