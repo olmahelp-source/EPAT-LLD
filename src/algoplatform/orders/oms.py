@@ -9,7 +9,7 @@ from ..brokers.base import BrokerEvent
 from ..core import events as ev
 from ..core.enums import OrderStatus as S, OrderType, Side, TimeInForce
 from ..core.events import EventBus
-from ..core.exceptions import (InvalidTransitionError, OrderNotFoundError)
+from ..core.exceptions import (DuplicateOrderError, InvalidTransitionError, OrderNotFoundError)
 from ..core.logging import AuditLog, get_logger
 from ..core.models import Fill, Order
 from ..utils.helpers import IdGenerator
@@ -32,7 +32,7 @@ TRANSITIONS: Dict[S, Set[S]] = {
 
 class OrderManager:
     def __init__(self, bus: Optional[EventBus] = None, audit: Optional[AuditLog] = None,
-                 clock: Optional[Clock] = None, id_prefix: str = "ORD") -> None:
+                 clock: Optional[Clock] = None, id_prefix: str = "ORD", ids: Optional[IdGenerator] = None) -> None:
         self.bus = bus or EventBus()
         self.audit = audit or AuditLog()
         self.clock = clock or SystemClock()
@@ -40,7 +40,7 @@ class OrderManager:
         self._open: Dict[str, Order] = {}          # index of non-terminal orders (keeps queries O(open))
         self._idem: Dict[str, str] = {}
         self._fill_ids: Set[str] = set()
-        self._ids = IdGenerator(id_prefix)
+        self._ids = ids or IdGenerator(id_prefix)
         self._lock = threading.RLock()
         self.anomalies: List[Dict[str, Any]] = []
 
@@ -60,6 +60,9 @@ class OrderManager:
                           tif, strategy_id, account_id, reduce_only, created_at=now, updated_at=now,
                           parent_id=parent_id, tags=dict(tags or {}))
             order.validate()
+            if order.client_order_id in self._orders:                 # never overwrite an order (e.g. one restored after a restart)
+                raise DuplicateOrderError(f"client order id {order.client_order_id} is already in use",
+                                          details={"client_order_id": order.client_order_id})
             if idempotency_key:
                 order.tags["idempotency_key"] = idempotency_key        # persisted, so recovery can rebuild the key index
             self._orders[order.client_order_id] = order
