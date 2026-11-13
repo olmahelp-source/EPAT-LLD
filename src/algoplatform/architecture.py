@@ -97,7 +97,7 @@ ALLOWED: Dict[str, FrozenSet[str]] = {k: frozenset(v) for k, v in {
     "selection": ("core", "relationships"),
     # portfolio and risk
     "portfolio": _LIBS,
-    "risk": ("core", "utils", "stats", "portfolio"),
+    "risk": ("core", "utils", "stats", "quant", "portfolio"),      # quant: option repricing for scenario margin
     # trading
     "brokers": ("core", "utils", "users"),
     "orders": ("core", "utils", "brokers", "portfolio", "risk"),

@@ -5,3 +5,5 @@ from .portfolio import Portfolio, Trade
 from .sizing import (SIZERS, FixedFractional, FixedQuantity, KellySizer, PositionSizeManager, PositionSizer,
                      RiskPerTrade, SizingContext, VolatilityTarget, drawdown_scalar, kelly_fraction,
                      kelly_gaussian, optimal_f)
+from .currency import (CashEntry, CashLedger, FxRates, exposure_by_currency, fx_pnl_attribution, hedge_notionals,
+                       portfolio_currency_exposure)
