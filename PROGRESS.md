@@ -8,7 +8,7 @@ It is updated at the end of every unit of work. Rules for keeping it honest are 
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
 **Merge state.** Pull request #2 merged the first part of this work (all source and tests up to that point). Everything
-after it is on the working branch, which already contains the default branch, and goes in through the next pull request.
+after it is on the working branch, which already contains the default branch, and is proposed in pull request #3.
 
 ---
 
@@ -196,7 +196,7 @@ Round two completed every pending item that can be done from this environment. W
 
 | # | Task | State | Why it is not done |
 |---|---|---|---|
-| 1 | Merge the second pull request into the default branch | **waiting for the owner** | Opening it is done by me; merging into the default branch is the repository owner's decision, as with pull request #2. |
+| 1 | Merge pull request #3 into the default branch | **waiting for the owner** | Opened: https://github.com/olmahelp-source/EPAT-LLD/pull/3. Merging into the default branch is the repository owner's decision, as with pull request #2. |
 | 2 | Run the integrations against real services: Claude sentiment client, Slack, Telegram, webhook, e-mail, broker sandboxes | **blocked** | Needs the owner's credentials and accounts; nothing here should send messages or orders to real services. All are tested against fakes. |
 | 3 | Type findings in the 113 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
 | 4 | Move packages into one folder per job group | not started, optional | Changes every import path; a decision for the owner. The grouping is already enforced by `architecture.py`. |
