@@ -30,8 +30,8 @@ from ..app.platform import TradingPlatform
 from ..core.config import PlatformConfig
 from ..core.enums import OrderStatus, OrderType, Permission, Role, Side
 from ..core.exceptions import (AuthenticationError, AuthorizationError, BacktestError, ConfigError, DataError,
-                               OptimizationError, OrderError, PlatformError, RiskError, StrategyError, UserError,
-                               ValidationError)
+                               GovernanceError, ModelError, OptimizationError, OrderError, PlatformError, RiskError,
+                               StatisticsError, StrategyError, UserError, ValidationError)
 from ..core.logging import get_logger
 from ..core.models import Bar
 from ..data import MarketData, synthetic
@@ -45,6 +45,8 @@ from .. import fundamentals as _fundamentals, sentiment as _sentiment  # noqa: F
 from ..strategy.base import STRATEGIES
 from ..utils.timeutils import SimClock
 from ..users.manager import User, UserManager
+from . import quant_api
+from .quant_api import session_metrics
 
 log = get_logger(__name__)
 STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -54,8 +56,8 @@ SLOW = {"ml_logistic"}                            # retrains repeatedly: keep op
 ALGO_NAMES = {"twap", "vwap", "pov", "iceberg", "is"}
 MAX_UPLOAD_ROWS, MAX_UPLOAD_SYMBOLS = 5000, 10
 _STATUS = ((AuthenticationError, 401), (AuthorizationError, 403), (UserError, 409), (RiskError, 409), (OrderError, 409),
-           (ValidationError, 400), (ConfigError, 400), (StrategyError, 400), (BacktestError, 400),
-           (OptimizationError, 400), (DataError, 400))
+           (GovernanceError, 409), (ValidationError, 400), (ConfigError, 400), (StrategyError, 400), (BacktestError, 400),
+           (OptimizationError, 400), (DataError, 400), (ModelError, 400), (StatisticsError, 400))
 
 
 def clean(o: Any) -> Any:
@@ -98,6 +100,7 @@ class LiveSession:
         self.history: Dict[str, List[float]] = {s: [] for s in symbols}
         self.cond = threading.Condition()
         self.version = 0
+        self.on_step: Optional[Callable[["LiveSession"], None]] = None     # set by the app: evaluates alert rules
 
     def touch(self) -> None:
         """Wake stream listeners: the visible state changed."""
@@ -125,6 +128,11 @@ class LiveSession:
                     self.history[s] = self.history[s][-200:]
                 self.engine.on_bars(bars)
                 self.next_ts = self.next_ts + pd.offsets.BDay(1)
+                if self.on_step is not None:
+                    try:
+                        self.on_step(self)
+                    except Exception as exc:  # noqa: BLE001 - alerting must never stop the feed
+                        log.error("alert evaluation failed: %r", exc)
             self.save_meta()
         self.touch()
 
@@ -132,14 +140,17 @@ class LiveSession:
 class App:
     def __init__(self, config: Optional[PlatformConfig] = None, fast_hash: bool = False,
                  db_dir: Optional[str] = None) -> None:
-        self.platform = TradingPlatform(config or PlatformConfig(log_level="WARNING"))
-        if fast_hash:                                    # tests only: cheap scrypt
-            from ..users.security import PasswordHasher
-            self.platform.users.hasher = PasswordHasher(n=2 ** 4)
         self.db_dir = db_dir
         self._meta: Optional[SqliteStore] = None
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
+        # with a db_dir, instruments, strategy approvals, models, alert rules and notification routes survive a restart
+        self.platform = TradingPlatform(config or PlatformConfig(log_level="WARNING"),
+                                        store=SqliteStore(os.path.join(db_dir, "platform.db")) if db_dir else None)
+        if fast_hash:                                    # tests only: cheap scrypt
+            from ..users.security import PasswordHasher
+            self.platform.users.hasher = PasswordHasher(n=2 ** 4)
+        if db_dir:
             self._meta = SqliteStore(os.path.join(db_dir, "app.db"))
             n = self.platform.users.import_users(self._meta.get("users", []))
             log.info("restored %d users from %s", n, db_dir)
@@ -149,6 +160,12 @@ class App:
         self.lock = threading.Lock()
         self.routes: Dict[Tuple[str, str], Tuple[Callable, bool]] = {}
         self._register()
+        quant_api.register(self)
+
+    def _watch(self, sess: "LiveSession") -> "LiveSession":
+        """Evaluate the platform's alert rules against this session after every simulated bar."""
+        sess.on_step = lambda s: self.platform.alerts.evaluate(session_metrics(s.engine, s.last))
+        return sess
 
     # ---- routing --------------------------------------------------------------------------
     def route(self, method: str, path: str, public: bool = False):
@@ -216,7 +233,7 @@ class App:
                 orders[f.client_order_id].fills.append(f)
         live = [o for o in orders.values() if o.status in (OrderStatus.ACKNOWLEDGED, OrderStatus.PARTIALLY_FILLED)]
         engine.broker.restore(fills, live, meta.get("last"))
-        sess = LiveSession(engine, meta["symbols"], meta["seed"], meta.get("strategy"), meta.get("params"), store)
+        sess = self._watch(LiveSession(engine, meta["symbols"], meta["seed"], meta.get("strategy"), meta.get("params"), store))
         sess.last, sess.history = {k: float(v) for k, v in meta["last"].items()}, meta["history"]
         sess.next_ts = pd.Timestamp(meta["next_ts"])
         clock.set((sess.next_ts - pd.offsets.BDay(1)).to_pydatetime())      # simulated time resumes at the last bar
@@ -484,8 +501,8 @@ class App:
                 # runaway-order guard see bar-to-bar time, not the microseconds between clicks
                 engine = P.open_session(u, acc.account_id, strategies, clock=SimClock(), store=store)
                 engine.start()
-                sess = LiveSession(engine, symbols, int(b.get("seed", 1)), b.get("strategy") or None,
-                                   b.get("params") or {}, store)
+                sess = self._watch(LiveSession(engine, symbols, int(b.get("seed", 1)), b.get("strategy") or None,
+                                               b.get("params") or {}, store))
                 sess.step(1)
                 self.sessions[u.user_id] = sess
             return self._snapshot(sess)

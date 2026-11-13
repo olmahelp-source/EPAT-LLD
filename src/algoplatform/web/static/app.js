@@ -162,14 +162,20 @@ function logout(silent) {
 }
 
 const TABS = [
-  { id: "backtest", label: "Backtest", build: backtestView },
-  { id: "builder", label: "Strategy builder", build: builderView },
-  { id: "optimize", label: "Optimise", build: optimizeView },
-  { id: "walkforward", label: "Walk-forward", build: walkForwardView },
-  { id: "portfolio", label: "Portfolio", build: portfolioView },
-  { id: "data", label: "Data", build: dataView },
-  { id: "live", label: "Paper trading", build: liveView },
+  { id: "backtest", label: "Backtest", build: backtestView, perm: ["backtest:run"] },
+  { id: "builder", label: "Strategy builder", build: builderView, perm: ["backtest:run"] },
+  { id: "optimize", label: "Optimise", build: optimizeView, perm: ["backtest:run"] },
+  { id: "walkforward", label: "Walk-forward", build: walkForwardView, perm: ["backtest:run"] },
+  { id: "portfolio", label: "Portfolio", build: portfolioView, perm: ["backtest:run"] },
+  { id: "data", label: "Data", build: dataView, perm: ["backtest:run"] },
+  { id: "live", label: "Paper trading", build: liveView, perm: ["order:place"] },
+  { id: "lab", label: "Technical lab", build: labView, perm: ["backtest:run"] },
+  { id: "vol", label: "Volatility", build: volView, perm: ["backtest:run"] },
+  { id: "select", label: "Selection", build: selectView, perm: ["backtest:run"] },
+  { id: "governance", label: "Governance", build: governanceView, perm: ["order:view"] },
+  { id: "inbox", label: "Alerts & inbox", build: inboxView, perm: ["risk:view"] },
   { id: "admin", label: "Admin & audit", build: adminView, perm: ["users:manage", "risk:manage"] },
+  { id: "map", label: "Platform map", build: mapView },
 ];
 
 function mount(node) { document.getElementById("root").replaceChildren(node); }
@@ -710,6 +716,292 @@ function renderLive(ui, snap, act) {
     { key: "strategy", label: "Source" }, { key: "reason", label: "Reason" },
     { key: "id", label: "", render: (v, r) => OPEN_STATUSES.has(r.status) ? h("button", { class: "btn ghost", type: "button", onclick: (e) => act(e.currentTarget, "/api/session/cancel", { order_id: v }) }, "Cancel") : "" }],
     snap.orders, "No orders yet."));
+}
+
+// ----- shared helpers for the research tabs -----
+function singleSymbolFields(def) {
+  const df = dataFields();
+  df.symbols.value = def || "AAA";
+  return df;
+}
+const when = (v) => v ? String(v).replace("T", " ").slice(0, 16) : "–";
+const dirLabel = (d) => d > 0 ? h("span", { class: "good" }, "bullish") : d < 0 ? h("span", { class: "bad" }, "bearish") : h("span", { class: "muted" }, "neutral");
+const sevBadge = (v) => h("span", { class: "badge sev-" + v }, v);
+const stageBadge = (v) => h("span", { class: "badge stage-" + v }, v);
+function note(text) { return h("p", { class: "hint" }, text); }
+
+// ----- technical lab -----
+const FORMULA_EXAMPLES = [
+  "crossover(ema(close, 10), ema(close, 40)) and rsi(close, 14) < 70",
+  "supertrend(high, low, close, 10, 3).direction > 0 and relative_volume(volume, 20) > 1.5",
+  "rsi(close, 14) < 30 and close > sma(close, 200)",
+  "barssince(crossover(close, shift(highest(close, 20), 1))) < 5",
+  "clamp(-zscore(close, 20) / 2, -1, 1)",
+  "macd(close).hist",
+];
+
+function labView() {
+  const root = h("div"), out = h("div"), df = singleSymbolFields("AAA");
+  const formula = h("textarea", { "aria-label": "formula", rows: 2 }, FORMULA_EXAMPLES[0]);
+  const pick = h("select", { "aria-label": "example formulas", onchange: () => { if (pick.value) formula.value = pick.value; } },
+    h("option", { value: "" }, "Examples…"), FORMULA_EXAMPLES.slice(0, 5).map((f) => h("option", { value: f }, f)));
+  const run = h("button", { class: "btn", type: "submit" }, "Analyse");
+  const catalogue = h("div");
+  const details = h("details", { ontoggle: () => {
+    if (!details.open || catalogue.childElementCount) return;
+    api("/api/functions").then((rows) => catalogue.replaceChildren(table([{ key: "kind", label: "Kind" }, { key: "category", label: "Category" },
+      { key: "signature", label: "Signature", render: (v) => h("code", { class: "cell-text" }, v) },
+      { key: "doc", label: "What it does", render: (v) => h("span", { class: "cell-text" }, v || "") }], rows))).catch((e) => toast(e.message, true));
+  } }, h("summary", null, "Function reference (indicators, patterns, operators)"), catalogue);
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/lab/technical", { ...df.get(), formula: formula.value });
+    out.replaceChildren(labResults(r));
+  }); } }, h("h2", null, "Indicators, patterns and formulas"),
+    h("div", { class: "row" }, ...df.nodes),
+    h("div", { style: "margin-top:10px" }, field("Formula (optional): evaluated over the whole history, causally", formula)),
+    h("div", { class: "row", style: "margin-top:8px" }, pick, run),
+    note("Formulas use the function catalogue below plus close, open, high, low, volume, arithmetic, comparisons, and / or / not, and pick one output with a dot (macd(close).hist). They are interpreted, never executed as code. A comparison involving a value that is not yet known (indicator warm-up) is false."),
+    details), out);
+  return root;
+}
+
+function labResults(r) {
+  const out = h("div"), ind = r.indicators;
+  out.append(h("div", { class: "kpis" },
+    kpi("Symbol", r.symbol), kpi("RSI(14)", fmt.num(ind.rsi, 1), ind.rsi > 70 ? "bad" : ind.rsi < 30 ? "good" : ""),
+    kpi("ADX(14)", fmt.num(ind.adx, 1)), kpi("Supertrend", ind.supertrend > 0 ? "up" : ind.supertrend < 0 ? "down" : "–", fmt.tone(ind.supertrend)),
+    kpi("ATR % of price", fmt.num(ind.natr, 2) + "%"), kpi("Choppiness", fmt.num(ind.choppiness, 0)), kpi("Relative volume", fmt.num(ind.relative_volume, 2))));
+  out.append(h("div", { class: "card" }, h("h2", null, "Price"), lineChart([{ name: "Close", cls: "s0", fcls: "f0", points: r.close }], { label: "price" })));
+  if (r.formula) {
+    const f = r.formula;
+    const body = f.condition
+      ? h("div", null, h("p", null, `True on ${f.true_bars} of ${f.bars} bars. Most recent moments it became true:`),
+          table([{ key: "date", label: "Date" }, { key: "close", label: "Close", render: (v) => fmt.num(v) }], f.events, "Never true on this data."))
+      : lineChart([{ name: "Formula value", cls: "s0", fcls: "f0", points: f.series }], { small: true, label: "formula value" });
+    out.append(h("div", { class: "card" }, h("h2", null, "Formula"), h("p", { class: "code" }, f.text),
+      note("Reads: " + (f.columns.join(", ") || "–") + ". Calls: " + (f.functions.join(", ") || "–") + "."), body));
+  }
+  out.append(h("div", { class: "grid cols-2" },
+    h("div", { class: "card" }, h("h2", null, "Chart patterns (most recent first)"),
+      table([{ key: "date", label: "Confirmed" }, { key: "name", label: "Pattern", render: (v) => v.replaceAll("_", " ") }, { key: "direction", label: "Bias", render: dirLabel },
+        { key: "level", label: "Level", render: (v) => fmt.num(v) }, { key: "target", label: "Target", render: (v) => fmt.num(v) }], r.chart_patterns, "No pattern confirmed."),
+      note("A pattern is listed on the bar where it became known (the neckline break, for reversals), never earlier. A detection describes the past; it is not a forecast.")),
+    h("div", { class: "card" }, h("h2", null, "Candlesticks, last 20 bars"),
+      table([{ key: "pattern", label: "Pattern", render: (v) => v.replaceAll("_", " ") }, { key: "count", label: "Times" },
+        { key: "last_signal", label: "Latest", render: (v) => v > 0 ? "bullish / present" : "bearish" }], r.candles, "None."),
+      note("Net candlestick score over the window: " + r.candle_score + " (bullish minus bearish signals)."),
+      h("h3", { style: "margin-top:14px" }, "Support and resistance"),
+      table([{ key: "price", label: "Price", render: (v) => fmt.num(v) }, { key: "kind", label: "Kind" }, { key: "touches", label: "Touches" }], r.levels, "No level touched twice."))));
+  return out;
+}
+
+// ----- volatility -----
+function volView() {
+  const root = h("div"), out = h("div"), df = singleSymbolFields("AAA");
+  const model = h("select", { "aria-label": "forecast model" }, ["ewma", "garch", "har", "hist"].map((m) => h("option", { value: m }, m.toUpperCase())));
+  const target = h("input", { type: "number", value: 10, min: 1, max: 60, step: 1, style: "width:80px" });
+  const run = h("button", { class: "btn", type: "submit" }, "Assess");
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/lab/volatility", { ...df.get(), model: model.value, target_vol: Number(target.value) / 100 });
+    out.replaceChildren(volResults(r));
+  }); } }, h("h2", null, "Volatility: estimate, forecast, size"),
+    h("div", { class: "row" }, ...df.nodes, field("Forecast model", model), field("Target volatility %", target), run),
+    note("The exposure multiplier is target / forecast volatility, capped at 2x, and halved again when volatility sits in the top fifth of its own history. The model league refits each model on the past only and scores its out-of-sample forecasts.")), out);
+  return root;
+}
+
+function volResults(r) {
+  const a = r.assessment, out = h("div");
+  out.append(h("div", { class: "kpis" }, kpi("Symbol", r.symbol), kpi("Forecast volatility", fmt.pct(a.forecast_vol, 1)),
+    kpi("Regime", a.regime, a.regime === "high" ? "bad" : a.regime === "low" ? "good" : ""), kpi("Percentile", fmt.pct(a.percentile, 0)),
+    kpi("Exposure multiplier", fmt.num(a.scalar, 2) + "x"), kpi("Model", a.model.toUpperCase())));
+  out.append(h("div", { class: "card" }, h("h2", null, "Rolling volatility (annualised)"),
+    lineChart([{ name: "Yang-Zhang 20-bar", cls: "s0", fcls: "f0", points: r.series.yang_zhang }, { name: "EWMA", cls: "s1", fcls: "f1", points: r.series.ewma }], { yFmt: (v) => fmt.pct(v, 0), label: "volatility" })));
+  out.append(h("div", { class: "grid cols-2" },
+    h("div", { class: "card" }, h("h2", null, "Estimators (latest)"), table([{ key: "name", label: "Estimator", render: (v) => v.replaceAll("_", " ") }, { key: "value", label: "Annualised", render: (v) => fmt.pct(v, 1) }], r.estimators),
+      note("Range-based estimators (Parkinson onward) use the high and low as well as the close, so they need far fewer bars for the same precision. Yang-Zhang also handles overnight gaps.")),
+    h("div", { class: "card" }, h("h2", null, "Out-of-sample model league"),
+      r.league ? table([{ key: "model", label: "Model" }, { key: "qlike", label: "QLIKE (lower is better)", render: (v) => fmt.num(v, 3) }, { key: "mz_r2", label: "R²", render: (v) => fmt.num(v, 2) },
+        { key: "forecasts", label: "Forecasts" }, { key: "error", label: "Error", render: (v) => v || "" }], r.league) : note("Needs more history (about 310 bars or more)."))));
+  if (r.cone.length) out.append(h("div", { class: "card" }, h("h2", null, "Volatility cone"),
+    table([{ key: "window", label: "Window (bars)" }, ...["min", "q25", "q50", "q75", "max", "current"].map((k) => ({ key: k, label: k, render: (v) => fmt.pct(v, 1) })),
+      { key: "percentile", label: "Current percentile", render: (v) => fmt.pct(v, 0) }], r.cone),
+    note("For each horizon, the range realised volatility has covered in this history and where it stands now. Compare an option's implied volatility with the matching row.")));
+  return out;
+}
+
+// ----- selection -----
+function selectView() {
+  const root = h("div"), out = h("div"), df = dataFields();
+  df.symbols.value = "AAA,BBB,CCC,DDD,EEE,FFF,GGG,HHH";
+  df.symbols.style.width = "260px";
+  const rows = h("div");
+  const addRanker = (name, weight) => {
+    const sel = h("select", { "aria-label": "ranker" });
+    api("/api/lab/options").then((o) => { o.rankers.forEach((x) => sel.append(h("option", { value: x }, x))); sel.value = name; }).catch(() => {});
+    const w = h("input", { type: "number", value: weight, step: 0.25, min: 0.25, style: "width:80px", "aria-label": "weight" });
+    const row = h("div", { class: "row", style: "margin-bottom:6px" }, field("Rank by", sel), field("Weight", w),
+      h("button", { class: "btn ghost", type: "button", onclick: () => row.remove() }, "Remove"));
+    row.get = () => ({ name: sel.value, weight: Number(w.value) });
+    rows.append(row);
+  };
+  addRanker("momentum", 1); addRanker("low_volatility", 0.5);
+  const top = h("input", { type: "number", value: 3, min: 1, max: 10, style: "width:70px" });
+  const corr = h("input", { type: "number", value: 0.8, min: 0, max: 1, step: 0.05, style: "width:80px" });
+  const run = h("button", { class: "btn", type: "submit" }, "Select");
+  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/lab/select", { ...df.get(), rankers: [...rows.children].map((x) => x.get()), top: Number(top.value), max_correlation: corr.value === "" ? null : Number(corr.value) });
+    out.replaceChildren(selectResults(r));
+  }); } }, h("h2", null, "Choose what to trade"), h("div", { class: "row" }, ...df.nodes), h("div", { style: "margin-top:10px" }, rows),
+    h("div", { class: "row" }, h("button", { class: "btn ghost", type: "button", onclick: () => addRanker("trend_quality", 1) }, "Add a ranking"),
+      field("How many", top), field("Max correlation between picks", corr), run),
+    note("Each ranking turns into a percentile; the composite is their weighted average, so rankings in different units can be combined. Walking down the list, a candidate that correlates above the limit with one already picked is skipped. Every instrument left out is listed with the reason.")), out);
+  return root;
+}
+
+function selectResults(r) {
+  const out = h("div"), syms = Object.keys(r.correlation || {});
+  const keys = r.scores.length ? Object.keys(r.scores[0]).filter((k) => k !== "symbol") : [];
+  out.append(h("div", { class: "kpis" }, kpi("Selected", r.selected.join(", ") || "none"),
+    kpi("Independent bets", r.concentration ? fmt.num(r.concentration.effective_bets, 1) : "–"),
+    kpi("Relationships found", Object.entries(r.relationships).map(([k, v]) => `${v} ${k}`).join(", ") || "none")));
+  out.append(h("div", { class: "card" }, h("h2", null, "Scores"),
+    table([{ key: "symbol", label: "Symbol", render: (v) => r.selected.includes(v) ? h("strong", null, v + " ✓") : v },
+      ...keys.map((k) => ({ key: k, label: k.replaceAll("_", " "), render: (v) => fmt.num(v, 3) }))], r.scores),
+    h("h3", { style: "margin-top:14px" }, "Left out"), table([{ key: "symbol", label: "Symbol" }, { key: "reason", label: "Reason" }], r.rejected, "Nothing left out.")));
+  out.append(h("div", { class: "grid cols-2" },
+    h("div", { class: "card" }, h("h2", null, "Cointegrated pairs"), table([{ key: "a", label: "Y" }, { key: "b", label: "X" }, { key: "stat", label: "Test statistic", render: (v) => fmt.num(v, 2) },
+      { key: "hedge_ratio", label: "Hedge ratio", render: (v) => fmt.num(v, 3) }, { key: "half_life", label: "Half-life (bars)", render: (v) => fmt.num(v, 1) }], r.pairs, "None at 5%."),
+      note("Testing many pairs at 5% finds about 5% by luck: treat these as candidates to validate out of sample."),
+      h("h3", { style: "margin-top:14px" }, "Who moves first"), table([{ key: "leader", label: "Leader" }, { key: "follower", label: "Follower" }, { key: "lag", label: "Lag (bars)" },
+        { key: "corr", label: "Correlation", render: (v) => fmt.num(v, 2) }], r.leads, "No significant lead-lag.")),
+    h("div", { class: "card" }, h("h2", null, "Return correlation"), table([{ key: "id", label: "" }, ...syms.map((c) => ({ key: c, label: c, render: (v) => fmt.num(v, 2) }))],
+      syms.map((id) => ({ id, ...r.correlation[id] }))))));
+  return out;
+}
+
+// ----- governance -----
+function governanceView() {
+  const root = h("div"), listBox = h("div"), forms = h("div");
+  let state = null;
+  const load = async () => {
+    state = await api("/api/governance");
+    const c = state.can;
+    const act = async (btn, body) => busy(btn, async () => { await api("/api/governance/decide", body); toast(body.strategy_id + ": " + body.action + " done"); await load(); });
+    const reasonFor = (label) => window.prompt(label);
+    listBox.replaceChildren(table([{ key: "strategy_id", label: "Strategy" }, { key: "owner", label: "Owner" }, { key: "stage", label: "Stage", render: stageBadge },
+      { key: "since", label: "Since", render: when },
+      { key: "pending", label: "Pending request", render: (p) => p ? h("span", null, `→ ${p.target} by ${p.by}, grade ${p.grade}`) : "–" },
+      { key: "strategy_id", label: "", render: (id, row) => h("div", { class: "row" },
+        row.pending && c.approve ? h("button", { class: "btn", type: "button", onclick: (e) => act(e.currentTarget, { strategy_id: id, action: "approve", reason: "approved in UI" }) }, "Approve") : null,
+        row.pending && c.approve ? h("button", { class: "btn ghost", type: "button", onclick: (e) => { const why = reasonFor("Reason for rejecting " + id); if (why) act(e.currentTarget, { strategy_id: id, action: "reject", reason: why }); } }, "Reject") : null,
+        row.stage === "LIVE" && c.demote ? h("button", { class: "btn danger", type: "button", onclick: (e) => { const why = reasonFor("Reason for taking " + id + " back to paper"); if (why) act(e.currentTarget, { strategy_id: id, action: "demote", reason: why }); } }, "Demote") : null) }],
+      state.strategies, "No strategy registered yet."),
+      state.strategies.some((x) => x.history.length) ? h("details", null, h("summary", null, "Decision history"),
+        table([{ key: "strategy", label: "Strategy" }, { key: "ts", label: "When", render: when }, { key: "actor", label: "By" }, { key: "action", label: "Action" },
+          { key: "to", label: "Stage" }, { key: "reason", label: "Reason" }], state.strategies.flatMap((x) => x.history.map((e) => ({ strategy: x.strategy_id, ...e }))))) : null);
+    if (!forms.childElementCount) renderForms();          // built once, so a reload keeps what the user typed
+  };
+  const renderForms = () => {
+    forms.replaceChildren();
+    const c = state.can;
+    if (!c.register && !c.propose) return;
+    const sid = h("input", { value: "my_strategy", style: "width:160px", "aria-label": "strategy id" });
+    const sel = h("select"), params = h("div", { class: "row" }), df = dataFields(), trials = h("input", { type: "number", value: 1, min: 1, style: "width:80px" });
+    df.symbols.value = "AAA";
+    let getParams = () => ({}), list = [];
+    const apply = () => { getParams = paramInputs(params, list.find((x) => x.name === sel.value)); };
+    sel.addEventListener("change", apply);
+    strategies().then((l) => { list = l.filter((x) => x.runnable); list.forEach((x) => sel.append(h("option", { value: x.name }, x.name))); apply(); });
+    const card = h("div");
+    const body = () => ({ strategy_id: sid.value.trim(), strategy: sel.value, params: getParams(), n_trials: Number(trials.value), ...df.get() });
+    const reg = h("button", { class: "btn ghost", type: "button", onclick: () => busy(reg, async () => { await api("/api/governance/register", body()); toast("Registered " + sid.value); await load(); }) }, "Register");
+    const evalBtn = h("button", { class: "btn ghost", type: "button", onclick: () => busy(evalBtn, async () => { card.replaceChildren(scorecard(await api("/api/governance/evaluate", body()))); }) }, "Score it");
+    const prop = h("button", { class: "btn", type: "button", onclick: () => busy(prop, async () => { const r = await api("/api/governance/propose", body()); card.replaceChildren(scorecard(r.verdict)); toast("Proposed: waiting for a second person to approve"); await load(); }) }, "Propose for next stage");
+    forms.append(h("div", { class: "card" }, h("h2", null, "Register, score and propose"),
+      h("div", { class: "row" }, field("Strategy id", sid), field("Strategy", sel), ...df.nodes, field("Variants tried", trials)),
+      h("div", { class: "row", style: "margin-top:10px" }, params), h("div", { class: "row", style: "margin-top:10px" }, c.register ? reg : null, evalBtn, c.propose ? prop : null),
+      note(`Promotion needs a passing scorecard and a different person's approval; going live also needs ${state.min_paper_days} days in paper trading. "Variants tried" is how many parameter sets or versions were tested to arrive at this one: the bar for skill rises with it.`), card));
+  };
+  load().catch((e) => toast(e.message, true));
+  root.append(h("div", { class: "card" }, h("h2", null, "Strategies: research → paper → live"), listBox), forms);
+  return root;
+}
+
+function scorecard(v) {
+  return h("div", { style: "margin-top:12px" },
+    h("div", { class: "kpis" }, kpi("Grade", v.grade, v.passed ? "good" : "bad"), kpi("Passed", v.passed ? "yes" : "no", v.passed ? "good" : "bad"), kpi("Checks passed", Math.round(v.score * v.checks.length) + " / " + v.checks.length)),
+    table([{ key: "name", label: "Check", render: (x) => x.replaceAll("_", " ") }, { key: "passed", label: "Result", render: (x) => x ? h("span", { class: "good" }, "pass") : h("span", { class: "bad" }, "fail") },
+      { key: "detail", label: "Detail" }], v.checks));
+}
+
+// ----- alerts & inbox -----
+function inboxView() {
+  const root = h("div");
+  const load = async () => {
+    const r = await api("/api/inbox");
+    const ack = (btn, id) => busy(btn, async () => { await api("/api/inbox/ack", { id }); toast("Acknowledged"); await load(); });
+    const remove = (btn, name) => busy(btn, async () => { await api("/api/alerts/remove", { name }); toast("Removed " + name); await load(); });
+    const noteCols = [{ key: "ts", label: "When", render: (v) => new Date(v * 1000).toLocaleString() }, { key: "severity", label: "Severity", render: sevBadge },
+      { key: "title", label: "Title" }, { key: "body", label: "Detail", render: (v) => (v || "").slice(0, 80) }];
+    const parts = [];
+    if (r.open_critical.length) parts.push(h("div", { class: "banner halt" }, h("strong", null, r.open_critical.length + " critical alert(s) not yet acknowledged"),
+      table([...noteCols, { key: "id", label: "", render: (id) => r.can_ack ? h("button", { class: "btn", type: "button", onclick: (e) => ack(e.currentTarget, id) }, "Acknowledge") : "" }], r.open_critical),
+      r.can_ack ? null : note("A risk manager or operations user must acknowledge these; until then they are re-sent.")));
+    parts.push(h("div", { class: "card" }, h("h2", null, "Alert rules"),
+      table([{ key: "name", label: "Rule" }, { key: "condition", label: "Condition" }, { key: "personal", label: "Scope", render: (v) => v ? "personal" : "firm-wide" },
+        { key: "severity", label: "Severity", render: sevBadge }, { key: "state", label: "State" }, { key: "fired", label: "Fired" },
+        { key: "name", label: "", render: (n, row) => (row.personal || r.can_add.firm) ? h("button", { class: "btn ghost", type: "button", onclick: (e) => remove(e.currentTarget, n) }, "Remove") : "" }],
+        r.alerts, "No alert rules yet."),
+      note("Rules are checked after every bar of your paper-trading session. A rule fires once, repeats at most every 5 minutes while it holds, and reports when it clears.")));
+    if (r.can_add.personal || r.can_add.firm) parts.push(alertForm(r, load));
+    parts.push(h("div", { class: "grid cols-2" },
+      h("div", { class: "card" }, h("h2", null, "Your notifications"), table(noteCols, r.personal, "Nothing for you yet.")),
+      h("div", { class: "card" }, h("h2", null, "Platform notifications"), table(noteCols, r.platform, "Nothing yet."),
+        r.undelivered ? note(r.undelivered + " notification(s) could not be delivered to an external channel; operations can replay them.") : null)));
+    root.replaceChildren(...parts);
+  };
+  load().catch((e) => toast(e.message, true));
+  return root;
+}
+
+function alertForm(r, reload) {
+  const kind = h("select", null, h("option", { value: "price" }, "Price crosses a level"), h("option", { value: "metric" }, "Risk metric"));
+  const symbol = h("input", { value: "AAA", style: "width:90px" }), level = h("input", { type: "number", value: 100, step: "any", style: "width:100px" });
+  const direction = h("select", null, h("option", { value: "above" }, "above"), h("option", { value: "below" }, "below"));
+  const metric = h("select", null, r.metrics.map((m) => h("option", { value: m }, m))), op = h("select", null, [">", ">=", "<", "<="].map((o) => h("option", { value: o }, o)));
+  const value = h("input", { type: "number", value: 0.1, step: "any", style: "width:100px" });
+  const severity = h("select", null, ["INFO", "WARNING", "ERROR", "CRITICAL"].map((x) => h("option", { value: x }, x)));
+  severity.value = "WARNING";
+  const scope = h("select", null, r.can_add.personal ? h("option", { value: "personal" }, "Just me") : null, r.can_add.firm ? h("option", { value: "firm" }, "Firm-wide") : null);
+  const priceBox = h("div", { class: "row" }, field("Symbol", symbol), field("Direction", direction), field("Level", level));
+  const metricBox = h("div", { class: "row", hidden: true }, field("Metric", metric), field("Comparison", op), field("Value", value));
+  kind.addEventListener("change", () => { priceBox.hidden = kind.value !== "price"; metricBox.hidden = kind.value === "price"; });
+  const add = h("button", { class: "btn", type: "submit" }, "Add rule");
+  return h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(add, async () => {
+    const body = { kind: kind.value, severity: severity.value, scope: scope.value };
+    if (kind.value === "price") Object.assign(body, { symbol: symbol.value, level: Number(level.value), direction: direction.value });
+    else Object.assign(body, { metric: metric.value, op: op.value, value: Number(value.value) });
+    const res = await api("/api/alerts/add", body);
+    toast("Added " + res.name);
+    await reload();
+  }); } }, h("h2", null, "Add an alert"), h("div", { class: "row" }, field("Type", kind), field("Severity", severity), field("Who is told", scope)),
+    h("div", { style: "margin-top:10px" }, priceBox, metricBox), h("div", { style: "margin-top:10px" }, add),
+    note("Drawdown and daily P&L are fractions (0.1 = 10%). A personal alert reaches only you; a firm-wide one goes to the platform inbox and every channel operations has configured."));
+}
+
+// ----- platform map -----
+function mapView() {
+  const root = h("div");
+  api("/api/structure").then((r) => root.replaceChildren(
+    h("div", { class: "kpis" }, kpi("Your role", r.role), kpi("Your desks", r.desks.join(", ") || "none"),
+      kpi("Dependency rules", r.violations.length ? r.violations.length + " violation(s)" : "hold", r.violations.length ? "bad" : "good")),
+    h("div", { class: "card" }, h("h2", null, "One platform, grouped by job"),
+      table([{ key: "title", label: "Job group" }, { key: "job", label: "The question it answers", render: (v) => h("span", { class: "cell-text" }, v) },
+        { key: "packages", label: "Packages", render: (v) => v.join(", ") }, { key: "roles", label: "Main roles", render: (v) => v.join(", ") || "everyone, through desks" }], r.groups),
+      note("Each package may import only what the platform's allow-list says, and a test fails if one reaches further: strategies never see orders or brokers, risk never knows which strategy sent an order, libraries stay pure computation.")),
+    r.violations.length ? h("div", { class: "card" }, h("h2", null, "Violations"), h("p", { class: "code" }, r.violations.join("\n"))) : null)).catch((e) => toast(e.message, true));
+  return root;
 }
 
 // ----- admin -----

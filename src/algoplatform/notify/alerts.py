@@ -189,6 +189,17 @@ class AlertManager:
     def states(self) -> Dict[str, Dict[str, Any]]:
         return {n: {"state": r.state.value, "fired": r.fired, "errors": r.errors, "severity": r.severity.value} for n, r in self._rules.items()}
 
+    def describe(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Rules as plain rows for a UI: firm-wide rules plus, when ``user_id`` is given, that user's personal ones
+        (other users' personal rules are never included)."""
+        return [{"name": r.name, "state": r.state.value, "severity": r.severity.value, "topic": r.topic, "personal": r.user_id is not None,
+                 "fired": r.fired, "errors": r.errors, "condition": (f"{r.definition['metric']} {r.definition['op']} {r.definition['value']:g}"
+                                                                     if r.definition else "defined in code"),
+                 "for_count": r.for_count} for r in self._rules.values() if r.user_id is None or r.user_id == user_id]
+
+    def owner(self, name: str) -> Optional[str]:
+        return self._rule(name).user_id
+
     def firing(self) -> List[str]:
         return [n for n, r in self._rules.items() if r.state is AlertState.FIRING]
 
