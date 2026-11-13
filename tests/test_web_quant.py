@@ -9,6 +9,7 @@ import pandas as pd
 import helpers  # noqa: F401
 from algoplatform.analytics import evaluate_strategy
 from algoplatform.core import PlatformConfig, Role
+from algoplatform.technical import CATALOG
 from algoplatform.web.server import App
 
 PW = "Correct-Horse-9"
@@ -54,7 +55,7 @@ class StructureAndAccessTests(WebQuantTestCase):
         self.assertEqual((quant["role"], quant["desks"], quant["violations"]), ("QUANT", ["research", "risk"], []))
         self.assertEqual(len(quant["groups"]), 12)
         self.assertEqual(self.ok("viewer", "GET", "/api/structure")["desks"], ["risk"])
-        self.assertEqual(len(self.ok("viewer", "GET", "/api/functions")), 118)
+        self.assertEqual(len(self.ok("viewer", "GET", "/api/functions")), len(CATALOG))       # other tests may register extra functions
         self.assertIn("momentum", self.ok("viewer", "GET", "/api/lab/options")["rankers"])
 
     def test_research_endpoints_need_the_research_desk(self):
