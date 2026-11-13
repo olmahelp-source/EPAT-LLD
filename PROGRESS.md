@@ -7,9 +7,10 @@ It is updated at the end of every unit of work. Rules for keeping it honest are 
 **Working branch:** `ccr-b7d3820c-a4gug7`
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
-**Merge state.** Pull request #2 merged the first part of this work (all source and tests up to that point). Everything
-after it is on the working branch, which already contains the default branch, and is proposed in pull request #3
-(round three was pushed to the same branch, so it is part of that pull request too).
+**Merge state.** Pull request #2 merged the first part of this work, and pull request #3 merged round two (at 08:44
+UTC on 2026-11-13, head `e3d8918`). Round three (the web UI regrouped by job group, commit `a1b58dd`) was pushed after
+that merge, so it is **not in any pull request yet**: it is on the working branch only. The working branch has the
+default branch merged into it (commit `a1631ed`, no file changes), so a new pull request would show only round three.
 
 ---
 
@@ -27,7 +28,7 @@ after it is on the working branch, which already contains the default branch, an
 | Web UI | **Done, grouped by job.** The menu follows the 12 job groups of `architecture.py` (titles come from the server); 24 pages, 9 of them new in round three; every group except Foundation has a page. Checked in a headless browser as all eight roles, on desktop and phone width. |
 | Restart safety of the shared services | **Done.** |
 | Example scripts | All three run. |
-| CI on GitHub | Passed (lint and tests on Python 3.10 to 3.13) for every pushed commit since the lint fixes; see section 7. |
+| CI on GitHub | Round three (run 24, commit `a1b58dd`): lint, tests on Python 3.10 to 3.13 and the optional-dependencies job all passed. The type-check job fails as before (informational): 112 findings, all in files that predate this work. Every earlier commit since the lint fixes passed; see section 7. |
 
 ---
 
@@ -195,13 +196,13 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 
 ## 6. Pending tasks
 
-Round two completed every pending item that can be done from this environment. What is left:
+Rounds two and three completed every pending item that can be done from this environment. What is left:
 
 | # | Task | State | Why it is not done |
 |---|---|---|---|
-| 1 | Merge pull request #3 into the default branch | **waiting for the owner** | Opened: https://github.com/olmahelp-source/EPAT-LLD/pull/3. Merging into the default branch is the repository owner's decision, as with pull request #2. |
+| 1 | Open a pull request for round three (web UI regrouped by job group) and merge it | **waiting for the owner** | Pull request #3 was merged before round three was pushed. A pull request is opened only when the owner asks; merging is the owner's decision, as with #2 and #3. |
 | 2 | Run the integrations against real services: Claude sentiment client, Slack, Telegram, webhook, e-mail, broker sandboxes | **blocked** | Needs the owner's credentials and accounts; nothing here should send messages or orders to real services. All are tested against fakes. |
-| 3 | Type findings in the 113 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
+| 3 | Type findings in the 112 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
 | 4 | Move packages into one folder per job group | not started, optional | Changes every import path; a decision for the owner. The grouping is already enforced by `architecture.py`. |
 
 Done in round two (previously pending): web UI for the new features; persistence of the new shared services; type
@@ -239,6 +240,9 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | full suite with deprecation warnings as errors (exit status checked) | **773 tests, OK** |
 | 2026-11-13 | `python -m ruff check .`; `python -m algoplatform structure --check`; `python -m mypy src/algoplatform` | clean; dependency rules OK; 0 findings in new files, 112 in pre-existing files |
 | 2026-11-13 | headless browser against a live server with `--db-dir`, all eight roles, desktop and 390 px phone width | each role's menu holds exactly its pages; every page's main action works (option chain, sentiment, 7 models, regimes, margin from entered and from paper positions, currency, order book, instrument load, health, audit filter, Bayesian optimisation); a forbidden deep link falls back to Home; phone menu opens and closes; no page wider than the screen; no "null", "undefined" or "NaN" on any page; no JavaScript errors; loaded instruments still there after a server restart |
+| 2026-11-13 | GitHub Actions, workflow "CI", run 24 (commit `a1b58dd`, round three) | lint: success; test 3.10, 3.11, 3.12, 3.13: success; optional-dependencies: success; run conclusion: success; typecheck (informational): failure, 112 findings, same files as locally, none in files added by this work |
+| 2026-11-13 | GitHub Actions, runs 18 to 22 (round two, including pull-request runs 20 and 22) | all success |
+| 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---
 
