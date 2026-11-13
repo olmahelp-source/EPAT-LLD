@@ -248,7 +248,7 @@ class RestartTests(unittest.TestCase):
         self.assertEqual(call("trader", "POST", "/api/alerts/add", {"kind": "price", "symbol": "AAA", "level": 5})[0], 200)
         self.assertEqual(call("trader", "GET", "/api/inbox")[0], 200)
         self.assertTrue(os.path.exists(os.path.join(self.dir, "platform.db")))
-        app.platform.store.close()
+        app.close()
 
         again = make_app(self.dir)                                                        # a new process on the same directory
         call2 = Client(again)
@@ -262,7 +262,7 @@ class RestartTests(unittest.TestCase):
         call2("trader", "POST", "/api/session/open", {"symbols": ["AAA"]})
         call2("trader", "POST", "/api/session/step", {"n": 1})
         self.assertEqual([n["title"] for n in call2("trader", "GET", "/api/inbox")[1]["personal"]], ["Alert: trader: AAA above 5"])
-        again.platform.store.close()
+        again.close()
 
 
 if __name__ == "__main__":

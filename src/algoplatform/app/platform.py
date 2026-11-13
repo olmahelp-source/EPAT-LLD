@@ -69,7 +69,7 @@ class TradingPlatform:
     # ---- durable state of the shared services ---------------------------------------------------
     def _state_parts(self) -> Dict[str, Any]:
         return {"instruments": self.instruments, "lifecycle": self.lifecycle, "models": self.models, "alerts": self.alerts,
-                "notifier": self.notifier, "data": self.data, "history": self.data.library}
+                "notifier": self.notifier, "data": self.data}
 
     def save_state(self, store: Optional[SqliteStore] = None) -> Dict[str, Any]:
         """Write the shared services to the store. Each part is saved on its own, so a part that cannot be serialised
@@ -91,6 +91,14 @@ class TradingPlatform:
             except Exception as exc:  # noqa: BLE001 - never let one part's failure lose the rest
                 errors[name] = repr(exc)
                 log.error("could not save platform state '%s': %r", name, exc)
+        if not self._history_attached(store):                   # history lives in its own tables, written as it changes;
+            try:                                                 # a different store (a backup) gets a full copy
+                self.data.library.copy_to(store)
+                saved.append("history")
+            except Exception as exc:  # noqa: BLE001
+                errors["history"] = repr(exc)
+        else:
+            saved.append("history")
         if errors:
             self.notifier.notify("Platform state not fully saved", ", ".join(sorted(errors)), Severity.ERROR, "system.persistence",
                                  key="persistence|" + "|".join(sorted(errors)))
@@ -118,8 +126,29 @@ class TradingPlatform:
             except Exception as exc:  # noqa: BLE001 - a damaged part must not stop the others from loading
                 report[name] = {"error": repr(exc)}
                 log.error("could not restore platform state '%s': %r", name, exc)
+        report["history"] = self._load_history(store)
         report["models_missing_objects"] = self.models.missing_models()
         return report
+
+    def _history_attached(self, store: SqliteStore) -> bool:
+        return store is self.store and self.data.library._store is store
+
+    def _load_history(self, store: SqliteStore) -> Any:
+        """Downloaded history: attached (written through) when ``store`` is the platform's own, otherwise only read. History
+        saved by an earlier version as one JSON document under ``platform.history`` is moved into the bars tables once."""
+        library = self.data.library
+        try:
+            report = library.attach(store) if store is self.store else library.load_from(store)
+            legacy = store.get("platform.history")
+            if legacy:
+                moved = library.import_state(legacy)
+                report = {"loaded": report["loaded"] + moved["loaded"], "skipped": report["skipped"] + moved["skipped"]}
+                if store is self.store and not moved["skipped"]:
+                    store.delete("platform.history")
+            return report
+        except Exception as exc:  # noqa: BLE001 - a damaged history must not stop the platform from starting
+            log.error("could not restore downloaded history: %r", exc)
+            return {"error": repr(exc)}
 
     def autosave(self) -> None:
         """Save if a store is configured. Called by the desks after every change; code that changes a service directly

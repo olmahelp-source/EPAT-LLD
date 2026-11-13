@@ -150,12 +150,14 @@ class ReplayTests(DataWebCase):
     def test_a_replay_session_resumes_after_a_restart(self):
         with tempfile.TemporaryDirectory() as d:
             app1 = make_app(d)
+            self.addCleanup(app1.close)
             self.app, self.call = app1, Client(app1)
             self.connect_and_fetch(("AAPL",), n=60)
             self.ok("trader", "POST", "/api/session/open", {"symbols": ["AAPL"], "feed": "history"})
             self.ok("trader", "POST", "/api/session/step", {"n": 4})
             before = self.ok("trader", "GET", "/api/session")
             app2 = make_app(d)                                                                    # new process, same directory
+            self.addCleanup(app2.close)
             call2 = Client(app2)
             code, after = call2("trader", "GET", "/api/session")
             self.assertEqual(code, 200)

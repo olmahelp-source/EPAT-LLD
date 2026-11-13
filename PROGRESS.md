@@ -3,7 +3,7 @@
 This file is the single source of truth for what has been built, what has been verified, and what is still pending.
 It is updated at the end of every unit of work. Rules for keeping it honest are in [`CLAUDE.md`](CLAUDE.md).
 
-**Last updated:** 2026-11-13, after round four (sample data, historical data from Alpaca / IB, data switch)
+**Last updated:** 2026-11-13, during round five (repository audit and restructuring)
 **Working branch:** `ccr-b7d3820c-a4gug7`
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
@@ -21,7 +21,7 @@ default branch merged into it (commit `a1631ed`, no file changes), so a new pull
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
 | Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
-| Whole test-suite | **808 tests pass** (407 original + 401 new), with deprecation warnings treated as errors. |
+| Whole test-suite | **811 tests pass** (407 original + 404 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
 | Type checker (`mypy`) | **No findings in the files added by this work.** 112 findings remain in files that predate it (the CI job stays informational). |
@@ -201,6 +201,18 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 
 ## 6. Pending tasks
 
+**Round five, in progress** (requested: audit the whole file structure; remove messy, duplicate and unnecessary files;
+check frontend, backend, middleware, database and API against the platform's rules; a switch for which sample data to use).
+
+| Step | State |
+|---|---|
+| Audit: inventory of all 238 tracked files; nothing generated is tracked; every module is imported; no duplicated function bodies; two unused names | **done** |
+| Small fixes: the order manager refuses a reused order id (`DuplicateOrderError`) instead of overwriting; unused `make_loopback` removed; ignore rules for tool caches and logs; 39 local cache folders and a generated report deleted | **done, tested** |
+| Database: downloaded history moved from one JSON document to `bar_series` / `bars` tables (schema v3, upgrade in place), written as it changes; old-format history moved once; `App.close()` closes every database (no more unclosed-connection warnings in the web tests) | **done, tested** |
+| API: one route module per job group; HTTP middleware and the paper feed in their own files | pending |
+| Frontend: one script per job group; a sample-scenario choice beside the Sample / Real switch | pending |
+
+
 **Round four, done** (requested: "add a sample data generator, or historical data from a broker (Alpaca or IB), or
 connect a data provider; add a switch for sample data"). All three were built:
 
@@ -265,6 +277,9 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | full suite with deprecation warnings as errors (exit status checked); ruff; structure check; mypy | **808 tests, OK**; clean; dependency rules OK; 112 findings, all in pre-existing files |
 | 2026-11-13 | headless browser against a live server with `--db-dir` and a fake Alpaca transport | operations connected Alpaca with a wrong key (Test reported the 401) then the right one (Test ok); the key never appeared in the page; quant previewed a crash scenario, downloaded SPY, AAPL, MSFT and an unknown symbol (reported, the rest loaded), charted a series; after switching the header to Real, Backtest and Technical lab started on downloaded history and ran; the trader replayed history in paper trading; after operations locked to sample data, the header showed the lock, history options were disabled, downloads were off and a history replay step was refused by the server; no page wider than a phone; no "null" on any page; no JavaScript errors |
 | 2026-11-13 | `curl https://data.alpaca.markets/v2/stocks/SPY/bars` without keys | HTTP 401: the host is reachable from this environment; nothing else was sent |
+| 2026-11-13 | GitHub Actions run 28 (round four, commit `bc4f137`); runs 25 to 27 | all success |
+| 2026-11-13 | round five audit script (unimported modules, unreferenced names, identical function bodies) | 0 unimported modules, 2 unused names (fixed), 0 duplicate bodies |
+| 2026-11-13 | full suite after the database change (exit status checked); ruff; structure; mypy; resource warnings in the web tests | **811 tests, OK**; clean; OK; 112 pre-existing findings; 0 unclosed connections |
 | 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---

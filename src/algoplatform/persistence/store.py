@@ -3,6 +3,9 @@
 The journal (``events``) is the source of truth; ``orders`` and ``fills`` are upserted projections for fast
 recovery. WAL mode and a commit per write mean an acknowledged write survives a process crash. Schema changes go
 through numbered migrations so an old database file upgrades in place.
+
+Tables: ``events`` (journal), ``orders`` / ``fills`` (projections), ``kill_switch``, ``kv`` (small JSON documents:
+platform settings and services), ``bar_series`` / ``bars`` (downloaded market history, one row per bar).
 """
 from __future__ import annotations
 
@@ -35,6 +38,12 @@ MIGRATIONS: Dict[int, List[str]] = {
         "CREATE TABLE kill_switch (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, reason TEXT, source TEXT, ts TEXT)",
         "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
         "CREATE INDEX idx_events_topic ON events(topic)",
+    ],
+    3: [
+        "CREATE TABLE bar_series (symbol TEXT NOT NULL, timeframe TEXT NOT NULL, provider TEXT NOT NULL, fetched_at TEXT NOT NULL, "
+        "cleaning TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (symbol, timeframe))",
+        "CREATE TABLE bars (symbol TEXT NOT NULL, timeframe TEXT NOT NULL, ts TEXT NOT NULL, open REAL NOT NULL, high REAL NOT NULL, "
+        "low REAL NOT NULL, close REAL NOT NULL, volume REAL NOT NULL, PRIMARY KEY (symbol, timeframe, ts)) WITHOUT ROWID",
     ],
 }
 SCHEMA_VERSION = max(MIGRATIONS)
@@ -171,6 +180,57 @@ class SqliteStore:
         with self._lock:
             r = self._db.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
         return default if r is None else json.loads(r[0])
+
+    def delete(self, key: str) -> bool:
+        with self._lock:
+            found = self._db.execute("SELECT 1 FROM kv WHERE key = ?", (key,)).fetchone() is not None
+        if found:
+            self._tx([("DELETE FROM kv WHERE key = ?", (key,))])
+        return found
+
+    # ---- market history ---------------------------------------------------------------------------------
+    def replace_bars(self, symbol: str, timeframe: str, provider: str, fetched_at: str, cleaning: Dict[str, Any],
+                     rows: Iterable[Tuple[str, float, float, float, float, float]]) -> int:
+        """Replace one series atomically: its description and every bar. Returns the number of bars written."""
+        rows = list(rows)
+        with self._lock:
+            try:
+                self._db.execute("BEGIN")
+                self._db.execute("DELETE FROM bars WHERE symbol = ? AND timeframe = ?", (symbol, timeframe))
+                self._db.executemany("INSERT INTO bars(symbol, timeframe, ts, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?,?)",
+                                     [(symbol, timeframe, *r) for r in rows])
+                self._db.execute("INSERT INTO bar_series(symbol, timeframe, provider, fetched_at, cleaning) VALUES (?,?,?,?,?) "
+                                 "ON CONFLICT(symbol, timeframe) DO UPDATE SET provider=excluded.provider, fetched_at=excluded.fetched_at, "
+                                 "cleaning=excluded.cleaning", (symbol, timeframe, provider, fetched_at, dumps(cleaning)))
+                self._db.execute("COMMIT")
+            except sqlite3.Error as exc:
+                try:
+                    self._db.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
+                raise StoreError(f"could not store bars for {symbol} {timeframe}: {exc}") from exc
+        return len(rows)
+
+    def delete_bars(self, symbol: str, timeframe: str) -> bool:
+        with self._lock:
+            found = self._db.execute("SELECT 1 FROM bar_series WHERE symbol = ? AND timeframe = ?", (symbol, timeframe)).fetchone() is not None
+        self._tx([("DELETE FROM bars WHERE symbol = ? AND timeframe = ?", (symbol, timeframe)),
+                  ("DELETE FROM bar_series WHERE symbol = ? AND timeframe = ?", (symbol, timeframe))])
+        return found
+
+    def bar_series(self) -> List[Dict[str, Any]]:
+        """Every stored series with its description and bar count, ordered by symbol and timeframe."""
+        with self._lock:
+            rows = self._db.execute("SELECT s.symbol, s.timeframe, s.provider, s.fetched_at, s.cleaning, COUNT(b.ts) FROM bar_series s "
+                                    "LEFT JOIN bars b ON b.symbol = s.symbol AND b.timeframe = s.timeframe "
+                                    "GROUP BY s.symbol, s.timeframe ORDER BY s.symbol, s.timeframe").fetchall()
+        return [{"symbol": r[0], "timeframe": r[1], "provider": r[2], "fetched_at": r[3], "cleaning": json.loads(r[4] or "{}"), "rows": r[5]}
+                for r in rows]
+
+    def load_bars(self, symbol: str, timeframe: str) -> List[Tuple[str, float, float, float, float, float]]:
+        with self._lock:
+            return [tuple(r) for r in self._db.execute("SELECT ts, open, high, low, close, volume FROM bars WHERE symbol = ? AND timeframe = ? "
+                                                       "ORDER BY ts", (symbol, timeframe)).fetchall()]
 
     def close(self) -> None:
         with self._lock:

@@ -234,6 +234,17 @@ class App:
         desk_api.register(self)
         data_api.register(self)
 
+    def close(self) -> None:
+        """Stop serving streams and close every database this app opened (platform, users, paper sessions)."""
+        self.shutting_down = True
+        stores = [s.store for s in self.sessions.values() if s.store is not None] + [self._meta, self.platform.store]
+        for st in stores:
+            if st is not None:
+                try:
+                    st.close()
+                except Exception as exc:  # noqa: BLE001 - closing one database must not stop the others
+                    log.warning("closing a store failed: %r", exc)
+
     def _watch(self, sess: "LiveSession") -> "LiveSession":
         """Evaluate the platform's alert rules against this session after every simulated bar."""
         sess.on_step = lambda s: self.platform.alerts.evaluate(session_metrics(s.engine, s.last))
@@ -908,5 +919,5 @@ def serve(host: str = "127.0.0.1", port: int = 8080, app: Optional[App] = None) 
     except KeyboardInterrupt:
         pass
     finally:
-        app.shutting_down = True
         httpd.server_close()
+        app.close()

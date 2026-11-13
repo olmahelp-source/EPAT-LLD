@@ -171,20 +171,45 @@ class RestartTests(PlatformCase):
         with open(self.path, "rb") as fh:
             self.assertNotIn(b"very-secret-123", fh.read())
 
-    def test_unchanged_history_is_not_rewritten_on_every_save(self):
+    def test_history_is_stored_one_row_per_bar_and_written_as_it_changes(self):
         p, u = self.boot()
         p.data.use_factory("alpaca", fake_alpaca(FakeHttp((200, {"bars": daily_bars(50)}))))
         p.desk(u[Role.OPERATIONS], "operations").connect_data_provider("alpaca", {}, KEYS)
         p.desk(u[Role.QUANT], "research").fetch_history("alpaca", ["AAPL"], "2023-01-01", "2023-06-30")
+        self.assertEqual([(s["symbol"], s["provider"], s["rows"]) for s in p.store.bar_series()], [("AAPL", "alpaca", 50)])
+        self.assertEqual(p.store.load_bars("AAPL", "1Day")[0][0][:10], "2023-01-02")
+        self.assertIsNone(p.store.get("platform.history"))                             # not a JSON blob in the key-value table
         writes = []
         real_put = p.store.put
         p.store.put = lambda key, value: (writes.append(key), real_put(key, value))[1]
         p.desk(u[Role.QUANT], "research").register_strategy("trend")                    # an unrelated change saves the platform
         self.assertIn("platform.lifecycle", writes)
-        self.assertNotIn("platform.history", writes)
-        writes.clear()
+        self.assertFalse(any("history" in k for k in writes))
         p.desk(u[Role.QUANT], "research").remove_history("AAPL")
-        self.assertIn("platform.history", writes)
+        self.assertEqual(p.store.bar_series(), [])
+
+    def test_history_saved_by_the_old_format_is_moved_once(self):
+        from algoplatform.data import HistoryLibrary, SampleDataProvider
+        old = HistoryLibrary()
+        old.put("OLD", "1Day", SampleDataProvider().fetch("OLD", "2023-01-01", "2023-03-31"), "alpaca")
+        store = SqliteStore(self.path)
+        store.put("platform.history", old.export_state())
+        store.close()
+        p, _ = self.boot()
+        self.assertEqual(p.restore_report["history"], {"loaded": 1, "skipped": []})
+        self.assertEqual([s["symbol"] for s in p.store.bar_series()], ["OLD"])
+        self.assertIsNone(p.store.get("platform.history"))
+
+    def test_an_old_database_upgrades_in_place(self):
+        old = SqliteStore(self.path, _max_version=2)
+        old.put("platform.instruments", [])
+        self.assertEqual(old.version, 2)
+        old.close()
+        new = SqliteStore(self.path)
+        self.addCleanup(new.close)
+        self.assertEqual(new.version, 3)
+        self.assertEqual(new.get("platform.instruments"), [])
+        self.assertEqual(new.bar_series(), [])
 
 
 if __name__ == "__main__":

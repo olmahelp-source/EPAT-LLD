@@ -2,8 +2,11 @@
 
 Market history is not private (unlike uploaded files), so one download serves everyone. Re-downloading a symbol from the
 same provider merges the new bars over the old (newer values win on the same timestamp); a download from a different
-provider replaces the series, so one series never mixes two sources. Size is capped so the library always fits in the
-state store.
+provider replaces the series, so one series never mixes two sources. Size is capped.
+
+Durability: :meth:`attach` connects a store with ``replace_bars`` / ``delete_bars`` / ``bar_series`` / ``load_bars``
+(the platform's ``SqliteStore``: one table row per bar). Every change is written to it before it is made in memory, so
+a failed write leaves both unchanged. The library never imports the store; it only needs those four methods.
 """
 from __future__ import annotations
 
@@ -42,7 +45,46 @@ class HistoryLibrary:
         self.max_rows_per_series, self.max_total_rows, self.max_series = max_rows_per_series, max_total_rows, max_series
         self._series: Dict[Tuple[str, str], Series] = {}
         self._lock = threading.RLock()
-        self.state_version = 0                # changes on every write: lets the platform skip saving an unchanged library
+        self._store: Any = None
+        self.state_version = 0                # changes on every write
+
+    # ---- durability -----------------------------------------------------------------------------------------------------------
+    @staticmethod
+    def _rows(frame: pd.DataFrame) -> List[Tuple[str, float, float, float, float, float]]:
+        values = frame[list(COLUMNS)].to_numpy(float)
+        return [(ts.isoformat(), *map(float, v)) for ts, v in zip(frame.index, values)]
+
+    def load_from(self, store: Any) -> Dict[str, Any]:
+        """Read every series the store holds into memory (without writing anything back)."""
+        loaded, skipped = 0, []
+        for meta in store.bar_series():
+            try:
+                rows = store.load_bars(meta["symbol"], meta["timeframe"])
+                frame = pd.DataFrame([r[1:] for r in rows], columns=list(COLUMNS), index=pd.DatetimeIndex(pd.to_datetime([r[0] for r in rows])))
+                frame = validate_ohlcv(frame, meta["symbol"])
+                with self._lock:
+                    self._series[(meta["symbol"], meta["timeframe"])] = Series(meta["symbol"], meta["timeframe"], meta["provider"], frame,
+                                                                               meta["fetched_at"], dict(meta.get("cleaning") or {}))
+                    self.state_version += 1
+                loaded += 1
+            except Exception as exc:  # noqa: BLE001 - one damaged series must not stop the rest loading
+                skipped.append({"series": f"{meta.get('symbol', '?')} {meta.get('timeframe', '?')}", "error": repr(exc)[:200]})
+        return {"loaded": loaded, "skipped": skipped}
+
+    def attach(self, store: Any) -> Dict[str, Any]:
+        """Load what ``store`` holds, then write every later change through to it."""
+        self._store = None
+        report = self.load_from(store)
+        self._store = store
+        return report
+
+    def copy_to(self, store: Any) -> int:
+        """Write every series to another store (a backup). Returns the number of series written."""
+        with self._lock:
+            items = list(self._series.values())
+        for x in items:
+            store.replace_bars(x.symbol, x.timeframe, x.provider, x.fetched_at, x.cleaning, self._rows(x.frame))
+        return len(items)
 
     # ---- writing ----------------------------------------------------------------------------------------------------------
     def put(self, symbol: str, timeframe: str, frame: pd.DataFrame, provider: str, cleaning: Optional[Mapping[str, int]] = None) -> Series:
@@ -62,12 +104,16 @@ class HistoryLibrary:
                 raise ValidationError(f"the history library would hold {total:,} bars, over its limit of {self.max_total_rows:,}; "
                                       "remove some series or download a shorter range")
             series = Series(symbol, timeframe, provider, frame, pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"), dict(cleaning or {}))
+            if self._store is not None:                                       # durable first: a failed write changes nothing
+                self._store.replace_bars(symbol, timeframe, provider, series.fetched_at, series.cleaning, self._rows(frame))
             self._series[key] = series
             self.state_version += 1
             return series
 
     def remove(self, symbol: str, timeframe: str = "1Day") -> bool:
         with self._lock:
+            if (symbol, timeframe) in self._series and self._store is not None:
+                self._store.delete_bars(symbol, timeframe)
             gone = self._series.pop((symbol, timeframe), None) is not None
             if gone:
                 self.state_version += 1
