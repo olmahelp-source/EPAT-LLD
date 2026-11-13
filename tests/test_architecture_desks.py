@@ -12,18 +12,18 @@ import pandas as pd
 import helpers
 from helpers import free_config, market_from_closes
 from algoplatform import architecture
-from algoplatform.analytics import evaluate_strategy
-from algoplatform.app import DESKS, TradingPlatform, desks_for, open_desk
-from algoplatform.app.cli import main as cli_main
-from algoplatform.core.enums import KillSwitchState, Permission, Role, Severity
-from algoplatform.core.exceptions import AuthorizationError, ConfigError, GovernanceError
-from algoplatform.governance import Stage
-from algoplatform.notify import MemoryChannel, drawdown_alert, price_alert
-from algoplatform.optimize import Param, ParameterSpace
-from algoplatform.relationships import RelationshipManager
-from algoplatform.selection import UniverseSelector
-from algoplatform.strategy import SMACrossover
-from algoplatform.users import ROLE_PERMISSIONS, PasswordHasher
+from algoplatform.validation.analytics import evaluate_strategy
+from algoplatform.application.app import DESKS, TradingPlatform, desks_for, open_desk
+from algoplatform.application.app.cli import main as cli_main
+from algoplatform.foundation.core.enums import KillSwitchState, Permission, Role, Severity
+from algoplatform.foundation.core.exceptions import AuthorizationError, ConfigError, GovernanceError
+from algoplatform.operations.governance import Stage
+from algoplatform.operations.notify import MemoryChannel, drawdown_alert, price_alert
+from algoplatform.validation.optimize import Param, ParameterSpace
+from algoplatform.quantitative.relationships import RelationshipManager
+from algoplatform.strategies.selection import UniverseSelector
+from algoplatform.strategies.strategy import SMACrossover
+from algoplatform.access.users import ROLE_PERMISSIONS, PasswordHasher
 
 SRC = os.path.dirname(os.path.abspath(architecture.__file__))
 P = Permission
@@ -34,7 +34,9 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual(architecture.check_architecture(), [])
 
     def test_every_package_has_exactly_one_job(self):
-        on_disk = {d for d in os.listdir(SRC) if os.path.exists(os.path.join(SRC, d, "__init__.py"))}
+        top = {d for d in os.listdir(SRC) if os.path.exists(os.path.join(SRC, d, "__init__.py"))}
+        self.assertEqual(top, {g.key for g in architecture.GROUPS})                                  # only job-group folders at the top
+        on_disk = {p for g in top for p in os.listdir(os.path.join(SRC, g)) if os.path.exists(os.path.join(SRC, g, p, "__init__.py"))}
         listed = architecture.packages()
         self.assertEqual(set(listed), on_disk)
         self.assertEqual(len(listed), len(set(listed)))
@@ -62,20 +64,31 @@ class ArchitectureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = os.path.join(tmp, "algoplatform")
             shutil.copytree(SRC, root, ignore=shutil.ignore_patterns("__pycache__"))
-            with open(os.path.join(root, "strategy", "sneaky.py"), "w") as fh:
-                fh.write("from ..brokers.base import BrokerGateway\n")                                 # a strategy reaching for a broker
-            with open(os.path.join(root, "technical", "impure.py"), "w") as fh:
-                fh.write("from algoplatform.orders import oms\nimport algoplatform.risk.manager\n")    # a library reaching for the order manager
-            os.mkdir(os.path.join(root, "mystery"))
-            open(os.path.join(root, "mystery", "__init__.py"), "w").close()
+            with open(os.path.join(root, "strategies", "strategy", "sneaky.py"), "w") as fh:
+                fh.write("from ...trading.brokers.base import BrokerGateway\n")                        # a strategy reaching for a broker
+            with open(os.path.join(root, "signals", "technical", "impure.py"), "w") as fh:
+                fh.write("from algoplatform.trading.orders import oms\nimport algoplatform.capital.risk.manager\n")   # a library reaching for orders
+            for folder in ("mystery", os.path.join("signals", "stray")):                                  # unassigned packages
+                os.mkdir(os.path.join(root, folder))
+                open(os.path.join(root, folder, "__init__.py"), "w").close()
+            shutil.move(os.path.join(root, "operations", "ops"), os.path.join(root, "capital", "ops"))     # a package in the wrong group
             problems = architecture.check_architecture(root)
         text = "\n".join(problems)
-        self.assertIn("strategy/sneaky.py:1: 'strategy' may not import 'brokers'", text)
+        self.assertIn("strategies/strategy/sneaky.py:1: 'strategy' may not import 'brokers'", text)
         self.assertIn("'strategy' must never depend on 'brokers'", text)
-        self.assertIn("technical/impure.py:1: library 'technical' must stay pure computation and cannot import 'orders'", text)
-        self.assertIn("technical/impure.py:2: 'technical' may not import 'risk'", text)
-        self.assertIn("package 'mystery' exists but is not assigned to a job group", text)
+        self.assertIn("signals/technical/impure.py:1: library 'technical' must stay pure computation and cannot import 'orders'", text)
+        self.assertIn("signals/technical/impure.py:2: 'technical' may not import 'risk'", text)
+        self.assertIn("package 'mystery' sits at the top level; every package belongs in its job group's folder", text)
+        self.assertIn("package 'signals/stray' exists but is not assigned to a job group", text)
+        self.assertIn("package 'ops' is in the folder of job group 'capital' but belongs to 'operations'", text)
         self.assertEqual(len([p for p in problems if "sneaky" in p]), 2)
+
+    def test_every_package_lives_in_its_groups_folder(self):
+        for g in architecture.GROUPS:
+            for p in g.packages:
+                self.assertEqual(architecture.package_dir(p), f"{g.key}/{p}")
+                self.assertTrue(os.path.isfile(os.path.join(SRC, g.key, p, "__init__.py")), p)
+            self.assertTrue(os.path.isfile(os.path.join(SRC, g.key, "__init__.py")), g.key)
 
 
 class RolePermissionTests(unittest.TestCase):

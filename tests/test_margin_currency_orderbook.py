@@ -5,16 +5,16 @@ from datetime import datetime
 import pandas as pd
 
 import helpers  # noqa: F401
-from algoplatform.brokers import MarketSimulator, OrderBook, ticks_to_bars
-from algoplatform.core.enums import OrderType, Side, TimeInForce
-from algoplatform.core.exceptions import MissingDataError, OrderError, OrderNotFoundError, ValidationError
-from algoplatform.core.models import Fill, Instrument, Order
-from algoplatform.data import MarketData
-from algoplatform.instruments import future_spec, option_spec
-from algoplatform.portfolio import (CashLedger, FxRates, Portfolio, exposure_by_currency, fx_pnl_attribution, hedge_notionals,
+from algoplatform.trading.brokers import MarketSimulator, OrderBook, ticks_to_bars
+from algoplatform.foundation.core.enums import OrderType, Side, TimeInForce
+from algoplatform.foundation.core.exceptions import MissingDataError, OrderError, OrderNotFoundError, ValidationError
+from algoplatform.foundation.core.models import Fill, Instrument, Order
+from algoplatform.market_data.data import MarketData
+from algoplatform.market_data.instruments import future_spec, option_spec
+from algoplatform.capital.portfolio import (CashLedger, FxRates, Portfolio, exposure_by_currency, fx_pnl_attribution, hedge_notionals,
                                     portfolio_currency_exposure)
-from algoplatform.quant import bs_price
-from algoplatform.risk import (MarginCheck, MarginPosition, MarginRules, RiskContext, ScanSettings, linear_requirement,
+from algoplatform.quantitative.quant import bs_price
+from algoplatform.capital.risk import (MarginCheck, MarginPosition, MarginRules, RiskContext, ScanSettings, linear_requirement,
                                liquidation_price, margin_report, position_margin, rule_based_margin, scenario_margin)
 
 

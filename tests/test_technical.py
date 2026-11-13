@@ -6,14 +6,14 @@ import pandas as pd
 
 import helpers  # noqa: F401
 from helpers import free_config
-from algoplatform import technical as ta
-from algoplatform.backtest import BacktestEngine
-from algoplatform.core.exceptions import ConfigError, ExpressionError, MissingDataError, StrategyError, ValidationError
-from algoplatform.data import MarketData, synthetic
-from algoplatform.strategy import (PolicyStrategy, create_from_expressions, expression_factory,
+from algoplatform.signals import technical as ta
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.foundation.core.exceptions import ConfigError, ExpressionError, MissingDataError, StrategyError, ValidationError
+from algoplatform.market_data.data import MarketData, synthetic
+from algoplatform.strategies.strategy import (PolicyStrategy, create_from_expressions, expression_factory,
                                    expression_spec_from_json, expression_spec_to_json, probability_policy)
-from algoplatform.technical import operators as op
-from algoplatform.technical.candles import (doji, engulfing, gap, hammer, inside_bar, marubozu, morning_star, outside_bar,
+from algoplatform.signals.technical import operators as op
+from algoplatform.signals.technical.candles import (doji, engulfing, gap, hammer, inside_bar, marubozu, morning_star, outside_bar,
                                             shooting_star, three_white_soldiers)
 
 DF = synthetic.gbm(400, seed=11)

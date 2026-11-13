@@ -11,18 +11,18 @@ import pandas as pd
 
 import helpers  # noqa: F401
 from helpers import STRONG_PW, fast_user_manager
-from algoplatform.analytics import evaluate_strategy
-from algoplatform.core import EventBus, events
-from algoplatform.core.enums import Role, Severity
-from algoplatform.core.exceptions import (AuthorizationError, ConfigError, DeliveryError, GovernanceError, ModelError, NotificationError,
+from algoplatform.validation.analytics import evaluate_strategy
+from algoplatform.foundation.core import EventBus, events
+from algoplatform.foundation.core.enums import Role, Severity
+from algoplatform.foundation.core.exceptions import (AuthorizationError, ConfigError, DeliveryError, GovernanceError, ModelError, NotificationError,
                                           ValidationError)
-from algoplatform.governance import ModelRegistry, PromotionPolicy, Stage, StrategyLifecycle, fingerprint
-from algoplatform.notify import (AlertManager, AlertRule, EmailChannel, FileChannel, LogChannel, MemoryChannel, Notification, Notifier,
+from algoplatform.operations.governance import ModelRegistry, PromotionPolicy, Stage, StrategyLifecycle, fingerprint
+from algoplatform.operations.notify import (AlertManager, AlertRule, EmailChannel, FileChannel, LogChannel, MemoryChannel, Notification, Notifier,
                                  SlackChannel, TelegramChannel, WebhookChannel, daily_loss_alert, drawdown_alert, price_alert,
                                  reject_rate_alert, stale_data_alert, threshold)
-from algoplatform.ops import HealthMonitor, Scheduler
-from algoplatform.sentiment import EVENTS, SENTIMENT_SCHEMA, LLMSentimentScorer, parse_verdict
-from algoplatform.utils import SimClock, TradingCalendar
+from algoplatform.operations.ops import HealthMonitor, Scheduler
+from algoplatform.signals.sentiment import EVENTS, SENTIMENT_SCHEMA, LLMSentimentScorer, parse_verdict
+from algoplatform.foundation.utils import SimClock, TradingCalendar
 
 
 class FakeTransport:

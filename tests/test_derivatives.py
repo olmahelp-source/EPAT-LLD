@@ -4,14 +4,14 @@ from datetime import date
 
 import numpy as np
 
-from algoplatform.core import Side
-from algoplatform.core.exceptions import StatisticsError, ValidationError
-from algoplatform.derivatives import (OptionLeg, binomial_price, butterfly, check_no_arbitrage, covered_call, expiry_fill, fit_svi,
+from algoplatform.foundation.core import Side
+from algoplatform.foundation.core.exceptions import StatisticsError, ValidationError
+from algoplatform.quantitative.derivatives import (OptionLeg, binomial_price, butterfly, check_no_arbitrage, covered_call, expiry_fill, fit_svi,
                                       greeks, hedge_trade, implied_vol_slice, iron_condor, mc_price, option_instrument, option_symbol,
                                       payoff, profile, simulate_delta_hedge, straddle, svi_total_variance, value,
                                       vertical_spread, whalley_wilmott_band)
-from algoplatform.portfolio import Portfolio
-from algoplatform.quant import bs_price
+from algoplatform.capital.portfolio import Portfolio
+from algoplatform.quantitative.quant import bs_price
 
 
 class PricingTests(unittest.TestCase):
@@ -146,7 +146,7 @@ class StrategyTests(unittest.TestCase):
         inst = option_instrument("AAPL", date(2024, 1, 19), "call", 150)
         self.assertEqual((inst.multiplier, inst.asset_class), (100.0, "option"))
         sym = inst.symbol
-        from algoplatform.core import Fill
+        from algoplatform.foundation.core import Fill
         pf = Portfolio(100_000, {sym: inst})
         pf.apply_fill(Fill("f1", "o1", sym, Side.BUY, 2, 5.0, None))
         self.assertAlmostEqual(pf.cash, 100_000 - 2 * 5.0 * 100)                                      # premium x multiplier x contracts

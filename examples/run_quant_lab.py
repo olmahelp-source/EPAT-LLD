@@ -12,27 +12,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import pandas as pd
 
-from algoplatform import technical as ta
-from algoplatform.ai import RegimeDetector, SymbolicAlpha, bocpd, changepoints_from_run_length
-from algoplatform.analytics import bootstrap_metrics, evaluate_backtest, evaluate_strategy
-from algoplatform.app import TradingPlatform
-from algoplatform.backtest import BacktestEngine
-from algoplatform.core import PlatformConfig, Role, Severity
-from algoplatform.core.exceptions import AuthorizationError, GovernanceError, KillSwitchActive, PlatformError
-from algoplatform.data import MarketData, synthetic
-from algoplatform.derivatives import synthetic_chain
-from algoplatform.dl import LSTMForecaster
-from algoplatform.instruments import ContractSpec, CorporateAction, InstrumentMaster, adjust_ohlcv, future_spec, option_spec
-from algoplatform.ml import GradientBoosting, forward_returns, information_coefficient, roc_auc, walk_forward_predict
-from algoplatform.notify import MemoryChannel, drawdown_alert
-from algoplatform.optimize import Param, ParameterSpace, backtest_objective, optimize
-from algoplatform.relationships import RelationshipManager, find_cointegrated_pairs
-from algoplatform.rl import DQNAgent, TradingEnv, evaluate, standardize, train
-from algoplatform.selection import UniverseSelector
-from algoplatform.strategy import SMACrossover, create_from_expressions
-from algoplatform.users import PasswordHasher
-from algoplatform.utils import ErrorBoundary, ErrorBudget, attempt, classify, first_success, partition
-from algoplatform.volatility import EWMAVol, GarchVol, HARVol, VolatilityManager, compare_vol_models, yang_zhang
+from algoplatform.signals import technical as ta
+from algoplatform.learning.ai import RegimeDetector, SymbolicAlpha, bocpd, changepoints_from_run_length
+from algoplatform.validation.analytics import bootstrap_metrics, evaluate_backtest, evaluate_strategy
+from algoplatform.application.app import TradingPlatform
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.foundation.core import PlatformConfig, Role, Severity
+from algoplatform.foundation.core.exceptions import AuthorizationError, GovernanceError, KillSwitchActive, PlatformError
+from algoplatform.market_data.data import MarketData, synthetic
+from algoplatform.quantitative.derivatives import synthetic_chain
+from algoplatform.learning.dl import LSTMForecaster
+from algoplatform.market_data.instruments import ContractSpec, CorporateAction, InstrumentMaster, adjust_ohlcv, future_spec, option_spec
+from algoplatform.learning.ml import GradientBoosting, forward_returns, information_coefficient, roc_auc, walk_forward_predict
+from algoplatform.operations.notify import MemoryChannel, drawdown_alert
+from algoplatform.validation.optimize import Param, ParameterSpace, backtest_objective, optimize
+from algoplatform.quantitative.relationships import RelationshipManager, find_cointegrated_pairs
+from algoplatform.learning.rl import DQNAgent, TradingEnv, evaluate, standardize, train
+from algoplatform.strategies.selection import UniverseSelector
+from algoplatform.strategies.strategy import SMACrossover, create_from_expressions
+from algoplatform.access.users import PasswordHasher
+from algoplatform.foundation.utils import ErrorBoundary, ErrorBudget, attempt, classify, first_success, partition
+from algoplatform.quantitative.volatility import EWMAVol, GarchVol, HARVol, VolatilityManager, compare_vol_models, yang_zhang
 
 logging.disable(logging.CRITICAL)                   # the tour triggers failures on purpose; keep the output readable
 T0 = time.time()

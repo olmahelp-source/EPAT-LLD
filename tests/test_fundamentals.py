@@ -5,10 +5,10 @@ import numpy as np
 import pandas as pd
 
 from helpers import free_config
-from algoplatform.backtest import BacktestEngine
-from algoplatform.core.exceptions import StrategyError, ValidationError
-from algoplatform.data import MarketData
-from algoplatform.fundamentals import (FactorStrategy, FundamentalsStore, Statement, altman_z, beneish_m, capm, composite_score,
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.foundation.core.exceptions import StrategyError, ValidationError
+from algoplatform.market_data.data import MarketData
+from algoplatform.signals.fundamentals import (FactorStrategy, FundamentalsStore, Statement, altman_z, beneish_m, capm, composite_score,
                                        dcf, factor_frame, gordon_ddm, margin_of_safety, multiples, piotroski_f, ratios,
                                        residual_income, reverse_dcf, sector_neutralize, sloan_accruals, terminal_sensitivity,
                                        wacc, winsorize, zscore)

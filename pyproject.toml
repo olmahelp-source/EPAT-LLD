@@ -21,7 +21,7 @@ algoplatform = "algoplatform.__main__:run"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"algoplatform.web" = ["static/*"]
+"algoplatform.application.web" = ["static/*", "static/js/*.js", "static/js/pages/*.js"]
 
 [tool.ruff]
 target-version = "py310"

@@ -6,11 +6,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import pandas as pd
 
-from algoplatform.core.config import CostConfig, PlatformConfig
-from algoplatform.core.enums import Role
-from algoplatform.core.models import Bar
-from algoplatform.data import MarketData
-from algoplatform.users import PasswordHasher, UserManager
+from algoplatform.foundation.core.config import CostConfig, PlatformConfig
+from algoplatform.foundation.core.enums import Role
+from algoplatform.foundation.core.models import Bar
+from algoplatform.market_data.data import MarketData
+from algoplatform.access.users import PasswordHasher, UserManager
 
 STRONG_PW = "Correct-Horse-9"
 

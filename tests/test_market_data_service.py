@@ -5,12 +5,12 @@ import tempfile
 import unittest
 
 import helpers
-from algoplatform.app import TradingPlatform
-from algoplatform.app.marketdata import SAMPLE_ONLY_CODE, MarketDataService
-from algoplatform.core import AuthenticationError, AuthorizationError, DataProviderError, MissingDataError, PlatformConfig, Role, ValidationError
-from algoplatform.data import AlpacaDataProvider, IBDataProvider
-from algoplatform.persistence import SqliteStore
-from algoplatform.users import PasswordHasher
+from algoplatform.application.app import TradingPlatform
+from algoplatform.application.app.marketdata import SAMPLE_ONLY_CODE, MarketDataService
+from algoplatform.foundation.core import AuthenticationError, AuthorizationError, DataProviderError, MissingDataError, PlatformConfig, Role, ValidationError
+from algoplatform.market_data.data import AlpacaDataProvider, IBDataProvider
+from algoplatform.operations.persistence import SqliteStore
+from algoplatform.access.users import PasswordHasher
 from test_data_providers import FakeHttp, FakeIB, bar
 
 KEYS = {"key_id": "AKFAKE01", "secret_key": "very-secret-123"}
@@ -189,7 +189,7 @@ class RestartTests(PlatformCase):
         self.assertEqual(p.store.bar_series(), [])
 
     def test_history_saved_by_the_old_format_is_moved_once(self):
-        from algoplatform.data import HistoryLibrary, SampleDataProvider
+        from algoplatform.market_data.data import HistoryLibrary, SampleDataProvider
         old = HistoryLibrary()
         old.put("OLD", "1Day", SampleDataProvider().fetch("OLD", "2023-01-01", "2023-03-31"), "alpaca")
         store = SqliteStore(self.path)

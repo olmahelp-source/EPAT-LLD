@@ -5,17 +5,17 @@ import numpy as np
 import pandas as pd
 
 from helpers import free_config, market_from_closes
-from algoplatform.analytics.signals import (forward_returns, ic_decay, ic_summary, information_coefficient,
+from algoplatform.validation.analytics.signals import (forward_returns, ic_decay, ic_summary, information_coefficient,
                                             quantile_returns, signal_autocorrelation, signal_correlation, signal_turnover)
-from algoplatform.backtest import BacktestEngine
-from algoplatform.core.exceptions import StrategyError, ValidationError
-from algoplatform.research import (CombinatorialPurgedCV, LogisticModel, PurgedKFold, RidgeModel, Scaler, SklearnAdapter,
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.foundation.core.exceptions import StrategyError, ValidationError
+from algoplatform.learning.research import (CombinatorialPurgedCV, LogisticModel, PurgedKFold, RidgeModel, Scaler, SklearnAdapter,
                                    average_uniqueness, brier_score, build_features, calibration_table, cv_scores,
                                    daily_vol, ffd_weights, frac_diff, log_loss, min_stationary_d, num_concurrent,
                                    out_of_range_share, permutation_importance, probability_of_backtest_overfitting, psi, sample_weights,
                                    sequential_bootstrap, triple_barrier)
-from algoplatform.research.models import accuracy
-from algoplatform.strategy import STRATEGIES, MLStrategy
+from algoplatform.learning.research.models import accuracy
+from algoplatform.strategies.strategy import STRATEGIES, MLStrategy
 
 
 def series(vals, start="2024-01-01"):

@@ -9,19 +9,19 @@ import pandas as pd
 
 import helpers
 from helpers import fast_user_manager
-from algoplatform.analytics import evaluate_strategy
-from algoplatform.app import TradingPlatform
-from algoplatform.core.config import PlatformConfig
-from algoplatform.core.enums import Role, Severity
-from algoplatform.core.exceptions import ConfigError, GovernanceError, ModelError
-from algoplatform.governance import ModelRegistry, Stage, StrategyLifecycle
-from algoplatform.instruments import ContractSpec, InstrumentMaster, future_spec, option_spec
-from algoplatform.notify import (AlertManager, AlertRule, EmailChannel, FileChannel, LogChannel, MemoryChannel, Notification, Notifier,
+from algoplatform.validation.analytics import evaluate_strategy
+from algoplatform.application.app import TradingPlatform
+from algoplatform.foundation.core.config import PlatformConfig
+from algoplatform.foundation.core.enums import Role, Severity
+from algoplatform.foundation.core.exceptions import ConfigError, GovernanceError, ModelError
+from algoplatform.operations.governance import ModelRegistry, Stage, StrategyLifecycle
+from algoplatform.market_data.instruments import ContractSpec, InstrumentMaster, future_spec, option_spec
+from algoplatform.operations.notify import (AlertManager, AlertRule, EmailChannel, FileChannel, LogChannel, MemoryChannel, Notification, Notifier,
                                  SlackChannel, TelegramChannel, WebhookChannel, channel_from_config, drawdown_alert, price_alert, threshold)
-from algoplatform.persistence import SqliteStore
-from algoplatform.persistence.codec import dumps
-from algoplatform.users import PasswordHasher
-from algoplatform.utils import json_safe
+from algoplatform.operations.persistence import SqliteStore
+from algoplatform.operations.persistence.codec import dumps
+from algoplatform.access.users import PasswordHasher
+from algoplatform.foundation.utils import json_safe
 
 
 def through_json(state):

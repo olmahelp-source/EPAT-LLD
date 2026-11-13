@@ -5,8 +5,8 @@ import urllib.error
 import urllib.request
 
 import helpers  # noqa: F401
-from algoplatform.core import PlatformConfig
-from algoplatform.web.server import App, create_server
+from algoplatform.foundation.core import PlatformConfig
+from algoplatform.application.web.server import App, create_server
 
 PW = "Correct-Horse-9"
 

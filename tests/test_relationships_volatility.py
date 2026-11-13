@@ -5,14 +5,14 @@ import numpy as np
 import pandas as pd
 
 import helpers  # noqa: F401
-from algoplatform.core.exceptions import ModelError, StatisticsError, ValidationError
-from algoplatform.data import synthetic
-from algoplatform.relationships import (RelationshipManager, absorption_ratio, average_correlation, beta, correlation_distance,
+from algoplatform.foundation.core.exceptions import ModelError, StatisticsError, ValidationError
+from algoplatform.market_data.data import synthetic
+from algoplatform.quantitative.relationships import (RelationshipManager, absorption_ratio, average_correlation, beta, correlation_distance,
                                         correlation_matrix, cross_correlation, ewma_correlation, find_cointegrated_pairs,
                                         granger_causality, hedge_ratio, hierarchical_clusters, lead_lag, lead_lag_matrix,
                                         minimum_spanning_tree, partial_correlation, pca_factors, rolling_beta, spread_zscore,
                                         stress_correlation, tail_dependence)
-from algoplatform.volatility import (MODELS, EWMAVol, GarchVol, HARVol, HistoricalVol, VolatilityManager, VolRegime, close_to_close,
+from algoplatform.quantitative.volatility import (MODELS, EWMAVol, GarchVol, HARVol, HistoricalVol, VolatilityManager, VolRegime, close_to_close,
                                      compare_vol_models, estimators, forecast_volatility, garman_klass, make_model, mincer_zarnowitz,
                                      parkinson, qlike, rogers_satchell, variance_proxy, variance_risk_premium, vol_of_vol,
                                      vol_target_scalar, vol_target_weights, volatility_cone, walk_forward_forecasts, yang_zhang)

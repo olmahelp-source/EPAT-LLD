@@ -7,10 +7,10 @@ import numpy as np
 import pandas as pd
 
 import helpers  # noqa: F401
-from algoplatform.analytics import evaluate_strategy
-from algoplatform.core import PlatformConfig, Role
-from algoplatform.technical import CATALOG
-from algoplatform.web.server import App
+from algoplatform.validation.analytics import evaluate_strategy
+from algoplatform.foundation.core import PlatformConfig, Role
+from algoplatform.signals.technical import CATALOG
+from algoplatform.application.web.server import App
 
 PW = "Correct-Horse-9"
 ROLES = (Role.QUANT, Role.TRADER, Role.PORTFOLIO_MANAGER, Role.RISK_MANAGER, Role.OPERATIONS, Role.AUDITOR, Role.VIEWER)

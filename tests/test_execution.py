@@ -6,18 +6,18 @@ import pandas as pd
 from helpers import bar, free_config, market_from_closes
 from test_orders_brokers import send, wired
 from test_strategy_backtest import Scripted
-from algoplatform.analytics.tca import fill_quality, markouts, order_tca, parent_tca, tca_summary
-from algoplatform.app.engine import TradingEngine
-from algoplatform.backtest import BacktestEngine
-from algoplatform.brokers import CostModel, PaperBroker
-from algoplatform.core import Fill, OrderStatus, OrderType, PlatformConfig, Side
-from algoplatform.core.config import CostConfig, RiskConfig
-from algoplatform.core.exceptions import ValidationError
-from algoplatform.execution import (POV, TWAP, VWAP, Iceberg, ImplementationShortfall, ParentOrder, SliceContext,
+from algoplatform.validation.analytics.tca import fill_quality, markouts, order_tca, parent_tca, tca_summary
+from algoplatform.application.app.engine import TradingEngine
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.trading.brokers import CostModel, PaperBroker
+from algoplatform.foundation.core import Fill, OrderStatus, OrderType, PlatformConfig, Side
+from algoplatform.foundation.core.config import CostConfig, RiskConfig
+from algoplatform.foundation.core.exceptions import ValidationError
+from algoplatform.trading.execution import (POV, TWAP, VWAP, Iceberg, ImplementationShortfall, ParentOrder, SliceContext,
                                     estimate_cost, go_no_go, limit_price, make_algo, u_shape, volume_curve_from_history)
-from algoplatform.execution.parent import DONE, FAILED
-from algoplatform.quant.impact import ac_trajectory, calibrate_impact, kappa_from_risk, sqrt_impact
-from algoplatform.utils import SimClock
+from algoplatform.trading.execution.parent import DONE, FAILED
+from algoplatform.quantitative.quant.impact import ac_trajectory, calibrate_impact, kappa_from_risk, sqrt_impact
+from algoplatform.foundation.utils import SimClock
 
 S = OrderStatus
 
@@ -158,8 +158,8 @@ class PricingAndImpactTests(unittest.TestCase):
 
         def avg_fill(sizes):
             b, fills = PaperBroker(1e9, cm), []
-            from algoplatform.orders import OrderManager
-            from algoplatform.core import EventBus, events as ev
+            from algoplatform.trading.orders import OrderManager
+            from algoplatform.foundation.core import EventBus, events as ev
             bus = EventBus()
             bus.subscribe(ev.FILL, lambda t, f: fills.append(f))
             oms = OrderManager(bus)
@@ -272,7 +272,7 @@ class LinkedOrderTests(unittest.TestCase):
         broker.process_bar(bar("2024-01-02", o=100))
         crossing = oms.create("X", Side.BUY, 5, OrderType.LIMIT, limit_price=101.0, tags={"post_only": True})
         oms.mark_sent(crossing)
-        from algoplatform.core.exceptions import OrderRejectedError
+        from algoplatform.foundation.core.exceptions import OrderRejectedError
         with self.assertRaises(OrderRejectedError):
             broker.submit_order(crossing)
         passive = send(oms, broker, "X", Side.BUY, 5, OrderType.LIMIT, limit_price=99.0, tags={"post_only": True})
@@ -414,7 +414,7 @@ class TcaTests(unittest.TestCase):
 
 
 def helpers_sma():
-    from algoplatform.strategy import SMACrossover
+    from algoplatform.strategies.strategy import SMACrossover
     return SMACrossover(["X"], fast=5, slow=20)
 
 

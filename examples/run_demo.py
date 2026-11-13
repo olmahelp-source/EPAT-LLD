@@ -5,16 +5,16 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
-from algoplatform.analytics import html_report, text_report
-from algoplatform.app import TradingPlatform
-from algoplatform.core import PlatformConfig, Role, Side
-from algoplatform.core.models import Bar
-from algoplatform.data import MarketData, synthetic
-from algoplatform.optimize import Param, ParameterSpace, walk_forward, backtest_objective, random_search
-from algoplatform.backtest import BacktestEngine
-from algoplatform.portfolio import FundAllocator, risk_parity, risk_contributions
-from algoplatform.stats import adf_test, deflated_sharpe, engle_granger, hurst_exponent
-from algoplatform.strategy import SMACrossover, StrategyBuilder
+from algoplatform.validation.analytics import html_report, text_report
+from algoplatform.application.app import TradingPlatform
+from algoplatform.foundation.core import PlatformConfig, Role, Side
+from algoplatform.foundation.core.models import Bar
+from algoplatform.market_data.data import MarketData, synthetic
+from algoplatform.validation.optimize import Param, ParameterSpace, walk_forward, backtest_objective, random_search
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.capital.portfolio import FundAllocator, risk_parity, risk_contributions
+from algoplatform.quantitative.stats import adf_test, deflated_sharpe, engle_granger, hurst_exponent
+from algoplatform.strategies.strategy import SMACrossover, StrategyBuilder
 
 OUT = os.path.join(os.path.dirname(__file__), "demo_report.html")
 

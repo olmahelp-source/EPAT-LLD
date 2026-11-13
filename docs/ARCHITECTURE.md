@@ -2,25 +2,29 @@
 
 `algoplatform` is one platform built from parts that each do one job. This document says what the jobs are, who does
 them, and which rules keep the parts from growing into each other. The tables below are generated from the code
-(`algoplatform/architecture.py`, `core/enums.py`, `users/security.py`, `app/workspaces.py`), which is the authority if
+(`algoplatform/architecture.py`, `foundation/core/enums.py`, `access/users/security.py`, `application/app/workspaces.py`), which is the authority if
 the two ever disagree. Print the live version with `python -m algoplatform structure`.
 
 ## 1. Structure, grouped by job
 
-| # | Job group | The question it answers | Packages | Who mainly works here |
-|---|---|---|---|---|
-| 1 | **Foundation** | Shared contracts, error handling and resilience that everything else relies on. | `core`, `utils` | everyone, through the desks |
-| 2 | **Access control** | Who is this user, what may they do, and which broker accounts are theirs? | `users` | Admin |
-| 3 | **Market and reference data** | What can be traded, on what terms, and what has it cost? | `data`, `instruments` | Ops, Quant |
-| 4 | **Signal libraries** | Turn raw data into numbers a rule can use: technical, fundamental, sentiment. | `technical`, `fundamentals`, `sentiment` | Quant |
-| 5 | **Quantitative research** | The mathematics: statistics, pricing and options, relationships, volatility. | `stats`, `quant`, `derivatives`, `relationships`, `volatility` | Quant |
-| 6 | **Learning and AI** | Models that learn from data: leakage-safe research, ML, deep learning, RL, other AI. | `research`, `ml`, `dl`, `rl`, `ai` | Quant |
-| 7 | **Strategy** | Decide what to hold: the strategy SDK, strategy creators and instrument selection. | `strategy`, `selection` | Quant, Trader |
-| 8 | **Portfolio and risk** | How much to hold, how capital is shared out, and when to stop. | `portfolio`, `risk` | PM, Risk |
-| 9 | **Trading** | Get orders to the market and fills back: brokers, order management, execution algorithms. | `brokers`, `orders`, `execution` | Trader |
-| 10 | **Validation** | Evidence that an idea works: backtests, parameter optimisation, result analysis. | `backtest`, `optimize`, `analytics` | Quant, PM |
-| 11 | **Operations and control** | Keep it running and accountable: durability, alerts, health, schedules, approvals. | `persistence`, `notify`, `ops`, `governance` | Ops, Risk, Auditor |
-| 12 | **Application** | Wire the parts together behind permission-checked, role-specific desks; CLI and web UI. | `app`, `web` | everyone, through the desks |
+Each job group is a folder under `src/algoplatform/` holding exactly its packages (`capital/risk`, `signals/technical`, ...),
+so an import path names the job as well as the package. `check_architecture()` fails if a package sits at the top level or in
+another group's folder, and `architecture.package_dir(name)` says where a package belongs.
+
+| # | Job group | Folder | The question it answers | Packages | Who mainly works here |
+|---|---|---|---|---|---|
+| 1 | **Foundation** | `foundation/` | Shared contracts, error handling and resilience that everything else relies on. | `core`, `utils` | everyone, through the desks |
+| 2 | **Access control** | `access/` | Who is this user, what may they do, and which broker accounts are theirs? | `users` | Admin |
+| 3 | **Market and reference data** | `market_data/` | What can be traded, on what terms, and what has it cost? | `data`, `instruments` | Ops, Quant |
+| 4 | **Signal libraries** | `signals/` | Turn raw data into numbers a rule can use: technical, fundamental, sentiment. | `technical`, `fundamentals`, `sentiment` | Quant |
+| 5 | **Quantitative research** | `quantitative/` | The mathematics: statistics, pricing and options, relationships, volatility. | `stats`, `quant`, `derivatives`, `relationships`, `volatility` | Quant |
+| 6 | **Learning and AI** | `learning/` | Models that learn from data: leakage-safe research, ML, deep learning, RL, other AI. | `research`, `ml`, `dl`, `rl`, `ai` | Quant |
+| 7 | **Strategy** | `strategies/` | Decide what to hold: the strategy SDK, strategy creators and instrument selection. | `strategy`, `selection` | Quant, Trader |
+| 8 | **Portfolio and risk** | `capital/` | How much to hold, how capital is shared out, and when to stop. | `portfolio`, `risk` | PM, Risk |
+| 9 | **Trading** | `trading/` | Get orders to the market and fills back: brokers, order management, execution algorithms. | `brokers`, `orders`, `execution` | Trader |
+| 10 | **Validation** | `validation/` | Evidence that an idea works: backtests, parameter optimisation, result analysis. | `backtest`, `optimize`, `analytics` | Quant, PM |
+| 11 | **Operations and control** | `operations/` | Keep it running and accountable: durability, alerts, health, schedules, approvals. | `persistence`, `notify`, `ops`, `governance` | Ops, Risk, Auditor |
+| 12 | **Application** | `application/` | Wire the parts together behind permission-checked, role-specific desks; CLI and web UI. | `app`, `web` | everyone, through the desks |
 
 Each package has a single reason to change. A few examples of where a concern lives, and where it deliberately does not:
 
@@ -150,7 +154,7 @@ so hiding a button in a UI is never the control.
 
 ### Desks
 
-A desk (`app/workspaces.py`) is the slice of the platform one job works with. `platform.desks(user)` returns exactly
+A desk (`application/app/workspaces.py`) is the slice of the platform one job works with. `platform.desks(user)` returns exactly
 the desks a user may open.
 
 | Desk | Needs permission | Admin | Quant | Trader | PM | Risk | Ops | Auditor | Viewer |
@@ -188,11 +192,11 @@ deliberately a one-person action.
 
 | Layer | Mechanism | Where |
 |---|---|---|
-| Say what went wrong | typed exception tree with `code`, `details` and a `retryable` flag | `core/exceptions.py` |
-| Decide what to do | `classify()` / `ErrorPolicy` map an exception to a category, a severity and an action (retry, fall back, skip, escalate, halt) | `utils/resilience.py` |
+| Say what went wrong | typed exception tree with `code`, `details` and a `retryable` flag | `foundation/core/exceptions.py` |
+| Decide what to do | `classify()` / `ErrorPolicy` map an exception to a category, a severity and an action (retry, fall back, skip, escalate, halt) | `foundation/utils/resilience.py` |
 | Survive transient faults | `retry`, `CircuitBreaker`, `RateLimiter`, `call_with_timeout`, `Deadline`, `Bulkhead` | `utils` |
-| Keep one failure local | `ErrorBoundary` with an `ErrorBudget`; `Result` and `ErrorCollector` for batches; `first_success` for fallbacks | `utils/resilience.py` |
-| Lose nothing | `DeadLetterQueue` with replay | `utils/resilience.py`, `notify` |
+| Keep one failure local | `ErrorBoundary` with an `ErrorBudget`; `Result` and `ErrorCollector` for batches; `first_success` for fallbacks | `foundation/utils/resilience.py` |
+| Lose nothing | `DeadLetterQueue` with replay | `foundation/utils/resilience.py`, `notify` |
 | Tell a person | events on the bus become notifications; unacknowledged critical ones escalate | `notify` |
 
 Two rules hold everywhere: a failure in one item of a batch (a symbol, a trial, a channel, an alert rule, a scheduled
@@ -248,19 +252,19 @@ the server ever disagree for any role.
 | Operations and control | Strategy approvals · Alerts and inbox · Health and jobs · Audit log | `order:view` · `risk:view` · `system:operate` · `audit:view` |
 | Application | Home: your role, desks and groups, and the whole map | everyone |
 
-The API is split the same way: `web/routes/<group>.py`, one module per job group (`access`, `market_data`, `signals`,
+The API is split the same way: `application/web/routes/<group>.py`, one module per job group (`access`, `market_data`, `signals`,
 `quant`, `learning`, `strategy`, `capital`, `trading`, `validation`, `operations`, `application`). Around them:
 
 | File | Layer | Job |
 |---|---|---|
-| `web/http.py` | middleware | request parsing and size limit, JSON-only bodies, static files confined to `static/`, security headers, the authenticated event stream, the threaded server |
-| `web/server.py` | application | `App`: the route table, token check and dispatch, mapping platform errors to HTTP codes, the data source of a request, shared state (sessions, uploads), closing every database |
-| `web/session.py` | trading | the paper-trading feed (sample random walk or replayed history) and the metrics alert rules read |
-| `web/common.py` | shared | JSON-safe conversion, chart series, small parsing helpers |
-| `web/routes/*.py` | API | the routes of one job group each |
-| `web/static/js/core.js` | frontend | DOM and chart helpers, the API client, shared form parts (data source, strategy parameters, editable rows) |
-| `web/static/js/pages/*.js` | frontend | the pages of one job group each, with the same names as the route modules |
-| `web/static/js/shell.js` | frontend | sign-in, the menu (`PAGES`), hash routing, the Sample / Real switch and scenario choice, start-up; loaded last |
+| `application/web/http.py` | middleware | request parsing and size limit, JSON-only bodies, static files confined to `static/`, security headers, the authenticated event stream, the threaded server |
+| `application/web/server.py` | application | `App`: the route table, token check and dispatch, mapping platform errors to HTTP codes, the data source of a request, shared state (sessions, uploads), closing every database |
+| `application/web/session.py` | trading | the paper-trading feed (sample random walk or replayed history) and the metrics alert rules read |
+| `application/web/common.py` | shared | JSON-safe conversion, chart series, small parsing helpers |
+| `application/web/routes/*.py` | API | the routes of one job group each |
+| `application/web/static/js/core.js` | frontend | DOM and chart helpers, the API client, shared form parts (data source, strategy parameters, editable rows) |
+| `application/web/static/js/pages/*.js` | frontend | the pages of one job group each, with the same names as the route modules |
+| `application/web/static/js/shell.js` | frontend | sign-in, the menu (`PAGES`), hash routing, the Sample / Real switch and scenario choice, start-up; loaded last |
 
 `tests/test_web_groups.py` checks that the route modules and the page scripts are exactly the job groups, that no route
 is registered twice, that each page's code lives in its group's script and calls routes of its own group, and that
@@ -272,11 +276,11 @@ layer show each group, its allow-list includes the libraries it displays (`deriv
 
 | Source | Where it comes from | Who | Used by |
 |---|---|---|---|
-| Sample | `data/synthetic.py` scenarios through `SampleDataProvider`: seeded, any symbol and date range | everyone with research | every research page, paper trading (random walk) |
-| Downloaded history | `AlpacaDataProvider` or `IBDataProvider` (`data/providers.py`) into `HistoryLibrary` (`data/library.py`), shared by all users | operations connects; research downloads | every research page (`source="history"`), paper trading replay |
+| Sample | `market_data/data/synthetic.py` scenarios through `SampleDataProvider`: seeded, any symbol and date range | everyone with research | every research page, paper trading (random walk) |
+| Downloaded history | `AlpacaDataProvider` or `IBDataProvider` (`market_data/data/providers.py`) into `HistoryLibrary` (`market_data/data/library.py`), shared by all users | operations connects; research downloads | every research page (`source="history"`), paper trading replay |
 | Uploaded | the user's own CSV files, in server memory | the uploading user only | every research page (`source="uploaded"`) |
 
-`app/marketdata.py` (`TradingPlatform.data`) holds the connections, the library and the sample-data-only lock; the desks
+`application/app/marketdata.py` (`TradingPlatform.data`) holds the connections, the library and the sample-data-only lock; the desks
 expose it (research: `fetch_history`, `remove_history`; operations: `connect_data_provider`, `test_data_provider`,
 `disconnect_data_provider`, `set_sample_data_only`). Providers live in `data`, which imports only `core`: a provider is
 given its keys, it never looks them up, so the credential vault stays in the access-control layer.
