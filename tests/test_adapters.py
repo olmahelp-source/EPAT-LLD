@@ -3,10 +3,10 @@ import hmac
 import unittest
 
 import helpers  # noqa: F401
-from algoplatform.brokers import (AlpacaGateway, BinanceGateway, FakeTransport, ZerodhaGateway, create_gateway)
-from algoplatform.core import EventBus, OrderStatus, OrderType, Side, TimeInForce
-from algoplatform.core.exceptions import (AuthenticationError, BrokerConnectionError, ConfigError, OrderRejectedError)
-from algoplatform.orders import OrderManager
+from algoplatform.trading.brokers import (AlpacaGateway, BinanceGateway, FakeTransport, ZerodhaGateway, create_gateway)
+from algoplatform.foundation.core import EventBus, OrderStatus, OrderType, Side, TimeInForce
+from algoplatform.foundation.core.exceptions import (AuthenticationError, BrokerConnectionError, ConfigError, OrderRejectedError)
+from algoplatform.trading.orders import OrderManager
 
 S = OrderStatus
 NOSLEEP = lambda s: None

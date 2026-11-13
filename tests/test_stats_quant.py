@@ -4,13 +4,13 @@ import unittest
 import numpy as np
 
 import helpers  # noqa: F401
-from algoplatform.core.exceptions import StatisticsError, ValidationError
-from algoplatform.data import synthetic
-from algoplatform.quant import (KalmanHedge, bs_greeks, bs_price, ema, ewma_volatility, garch11_fit, garch11_filter,
+from algoplatform.foundation.core.exceptions import StatisticsError, ValidationError
+from algoplatform.market_data.data import synthetic
+from algoplatform.quantitative.quant import (KalmanHedge, bs_greeks, bs_price, ema, ewma_volatility, garch11_fit, garch11_filter,
                                 implied_vol, kalman_smooth_1d, ledoit_wolf, nearest_psd, parkinson_vol, put_call_parity_gap,
                                 realized_vol, rsi, sma, atr, bollinger, macd, donchian, adx, stochastic, zscore,
                                 crossed_above, crossed_below, true_range, vwap, obv)
-from algoplatform.stats import (adf_test, autocorrelation, benjamini_hochberg, bonferroni, bootstrap_ci, chi2_sf,
+from algoplatform.quantitative.stats import (adf_test, autocorrelation, benjamini_hochberg, bonferroni, bootstrap_ci, chi2_sf,
                                 deflated_sharpe, engle_granger, excess_kurtosis, expected_max_sharpe, hurst_exponent,
                                 jarque_bera, kpss_test, ljung_box, lo_adjusted_sharpe, min_track_record_length,
                                 monte_carlo_trades, norm_cdf, norm_ppf, ols, ou_half_life, probabilistic_sharpe,

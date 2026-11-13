@@ -1,14 +1,14 @@
 import unittest
 
 from helpers import bar, free_cost_config
-from algoplatform.brokers import BrokerEvent, CostModel, PaperBroker, ResilientGateway, create_gateway
-from algoplatform.core import Fill, OrderStatus, OrderType, Side, TimeInForce, EventBus
-from algoplatform.core import events as ev
-from algoplatform.core.config import CostConfig
-from algoplatform.core.exceptions import (BrokerConnectionError, InvalidTransitionError,
+from algoplatform.trading.brokers import BrokerEvent, CostModel, PaperBroker, ResilientGateway, create_gateway
+from algoplatform.foundation.core import Fill, OrderStatus, OrderType, Side, TimeInForce, EventBus
+from algoplatform.foundation.core import events as ev
+from algoplatform.foundation.core.config import CostConfig
+from algoplatform.foundation.core.exceptions import (BrokerConnectionError, InvalidTransitionError,
                                           OrderNotFoundError, OrderRejectedError)
-from algoplatform.orders import OrderManager
-from algoplatform.utils import SimClock
+from algoplatform.trading.orders import OrderManager
+from algoplatform.foundation.utils import SimClock
 
 S = OrderStatus
 
@@ -39,8 +39,8 @@ class OMSTests(unittest.TestCase):
         return Fill(fid, o.client_order_id, o.symbol, o.side, qty, price, None)
 
     def test_an_id_already_in_use_is_refused_not_overwritten(self):
-        from algoplatform.core.exceptions import DuplicateOrderError
-        from algoplatform.utils.helpers import IdGenerator
+        from algoplatform.foundation.core.exceptions import DuplicateOrderError
+        from algoplatform.foundation.utils.helpers import IdGenerator
         first = OrderManager(EventBus(), clock=SimClock(), ids=IdGenerator("ORD", run_token="r1")).create("AAA", Side.BUY, 10)
         restarted = OrderManager(EventBus(), clock=SimClock(), ids=IdGenerator("ORD", run_token="r1"))   # a run token repeated
         restarted.restore([first])

@@ -6,7 +6,7 @@ import unittest
 import pandas as pd
 
 import helpers  # noqa: F401
-from algoplatform.data import AlpacaDataProvider
+from algoplatform.market_data.data import AlpacaDataProvider
 from test_data_providers import FakeHttp, bar
 from test_web_quant import Client, WebQuantTestCase, make_app
 

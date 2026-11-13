@@ -5,10 +5,10 @@ import numpy as np
 import pandas as pd
 
 from helpers import free_config
-from algoplatform.backtest import BacktestEngine
-from algoplatform.core.exceptions import StrategyError, ValidationError
-from algoplatform.data import MarketData
-from algoplatform.sentiment import (EntityMapper, NewsStore, SentimentSignal, SentimentStrategy, classify_event, score_text)
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.foundation.core.exceptions import StrategyError, ValidationError
+from algoplatform.market_data.data import MarketData
+from algoplatform.signals.sentiment import (EntityMapper, NewsStore, SentimentSignal, SentimentStrategy, classify_event, score_text)
 
 T0 = datetime(2024, 3, 1, 10, 0)
 

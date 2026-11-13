@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 
 import helpers  # noqa: F401
-from algoplatform.core import (ConfigError, DataProviderError, MissingDataError, ProviderAuthError, ProviderUnavailableError,
+from algoplatform.foundation.core import (ConfigError, DataProviderError, MissingDataError, ProviderAuthError, ProviderUnavailableError,
                                ValidationError)
-from algoplatform.data import (AlpacaDataProvider, HistoryLibrary, IBClient, IBDataProvider, MarketData, SampleDataProvider,
+from algoplatform.market_data.data import (AlpacaDataProvider, HistoryLibrary, IBClient, IBDataProvider, MarketData, SampleDataProvider,
                                synthetic)
 
 

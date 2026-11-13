@@ -11,9 +11,9 @@ import pandas as pd
 
 import helpers  # noqa: F401
 from algoplatform.__main__ import run
-from algoplatform.app import marketdata
-from algoplatform.app.cli import main
-from algoplatform.data import AlpacaDataProvider
+from algoplatform.application.app import marketdata
+from algoplatform.application.app.cli import main
+from algoplatform.market_data.data import AlpacaDataProvider
 from test_data_providers import FakeHttp, bar
 
 
@@ -104,7 +104,7 @@ class DataCommandTests(CliCase):
         self.assertEqual(code, 2)
         self.assertIn("SAMPLE_DATA_ONLY", err)
         self.assertEqual(self.cli("backtest", "--source", "history", "--db-dir", self.state)[0], 2)
-        from algoplatform.web.server import App                                        # the web server reads the same lock
+        from algoplatform.application.web.server import App                                        # the web server reads the same lock
         app = App(db_dir=self.state)
         self.addCleanup(app.close)
         self.assertTrue(app.platform.data.sample_only)

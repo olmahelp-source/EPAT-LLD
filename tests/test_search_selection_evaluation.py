@@ -6,16 +6,16 @@ import pandas as pd
 
 import helpers  # noqa: F401
 from helpers import free_config
-from algoplatform.analytics import (EvaluationLimits, bootstrap_metrics, compare_strategies, drawdown_probability, evaluate_backtest,
+from algoplatform.validation.analytics import (EvaluationLimits, bootstrap_metrics, compare_strategies, drawdown_probability, evaluate_backtest,
                                     evaluate_strategy, regime_breakdown, rolling_stability, trade_concentration)
-from algoplatform.backtest import BacktestEngine
-from algoplatform.core.exceptions import OptimizationError, ValidationError
-from algoplatform.data import MarketData, synthetic
-from algoplatform.optimize import (ADVANCED_METHODS, Param, ParameterSpace, UnitCube, backtest_objective, bayesian_search, cma_es,
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.foundation.core.exceptions import OptimizationError, ValidationError
+from algoplatform.market_data.data import MarketData, synthetic
+from algoplatform.validation.optimize import (ADVANCED_METHODS, Param, ParameterSpace, UnitCube, backtest_objective, bayesian_search, cma_es,
                                    differential_evolution, multi_objective_search, optimize, pareto_front, pso_search, random_search,
                                    simulated_annealing, successive_halving, tpe_search)
-from algoplatform.selection import RANKERS, UniverseSelector, ranker, select_one_per_cluster, select_pairs
-from algoplatform.strategy import SMACrossover
+from algoplatform.strategies.selection import RANKERS, UniverseSelector, ranker, select_one_per_cluster, select_pairs
+from algoplatform.strategies.strategy import SMACrossover
 
 SPACE2 = ParameterSpace([Param("x", "float", -5, 5), Param("y", "float", -5, 5)])
 MIXED = ParameterSpace([Param("x", "float", -5, 5), Param("y", "float", -5, 5), Param("n", "int", 1, 20), Param("mode", "choice", choices=("a", "b", "c"))])

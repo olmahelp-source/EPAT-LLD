@@ -5,12 +5,12 @@ import numpy as np
 import pandas as pd
 
 from helpers import free_config, free_cost_config, market_from_closes
-from algoplatform.backtest import BacktestEngine
-from algoplatform.core import PlatformConfig, Signal
-from algoplatform.core.config import RiskConfig
-from algoplatform.core.exceptions import BacktestError, ConfigError, StrategyError
-from algoplatform.data import MarketData, synthetic
-from algoplatform.strategy import (STRATEGIES, MomentumRotation, PairsTrading, SMACrossover,
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.foundation.core import PlatformConfig, Signal
+from algoplatform.foundation.core.config import RiskConfig
+from algoplatform.foundation.core.exceptions import BacktestError, ConfigError, StrategyError
+from algoplatform.market_data.data import MarketData, synthetic
+from algoplatform.strategies.strategy import (STRATEGIES, MomentumRotation, PairsTrading, SMACrossover,
                                    Strategy, StrategyBuilder, create_from_spec, spec_from_json, spec_to_json,
                                    validate_spec)
 
@@ -267,11 +267,11 @@ class BacktestIntegrityTests(unittest.TestCase):
         import os, subprocess, sys
         script = (
             "import sys; sys.path.insert(0, %r)\n"
-            "from algoplatform.data import MarketData, synthetic\n"
-            "from algoplatform.backtest import BacktestEngine\n"
-            "from algoplatform.strategy import SMACrossover\n"
-            "from algoplatform.core import PlatformConfig\n"
-            "from algoplatform.core.config import RiskConfig\n"
+            "from algoplatform.market_data.data import MarketData, synthetic\n"
+            "from algoplatform.validation.backtest import BacktestEngine\n"
+            "from algoplatform.strategies.strategy import SMACrossover\n"
+            "from algoplatform.foundation.core import PlatformConfig\n"
+            "from algoplatform.foundation.core.config import RiskConfig\n"
             "md = MarketData()\n"
             "for s, df in synthetic.universe(['AAA','BBB','CCC','DDD'], n=300, seed=11).items(): md.add(s, df)\n"
             "cfg = PlatformConfig(risk=RiskConfig(max_net_exposure_pct=0.5))   # cap binds: submission order matters\n"

@@ -3,15 +3,15 @@
 This file is the single source of truth for what has been built, what has been verified, and what is still pending.
 It is updated at the end of every unit of work. Rules for keeping it honest are in [`CLAUDE.md`](CLAUDE.md).
 
-**Last updated:** 2026-11-13, after round five (repository audit and restructuring, CLI)
+**Last updated:** 2026-11-13, after round six (packages moved into one folder per job group)
 **Working branch:** `ccr-b7d3820c-a4gug7`
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
 **Merge state.** Pull request #2 merged the first part of this work, and pull request #3 merged round two (at 08:44
 UTC on 2026-11-13, head `e3d8918`). Round three (the web UI regrouped by job group, commit `a1b58dd`) was pushed after
-that merge. Rounds three to five are proposed together in **pull request #4**
-(https://github.com/olmahelp-source/EPAT-LLD/pull/4), opened at the owner's request; the working branch already
-contains the default branch, so the pull request shows only this work.
+that merge. Rounds three to five went in together through **pull request #4**
+(https://github.com/olmahelp-source/EPAT-LLD/pull/4), merged by the owner at 14:00 UTC on 2026-11-13 (head `568faae`,
+merge commit `1f1708b`). The working branch now equals the default branch: nothing is waiting to be merged.
 
 ---
 
@@ -22,7 +22,7 @@ contains the default branch, so the pull request shows only this work.
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
 | Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
-| Whole test-suite | **822 tests pass** (407 original + 415 new), with deprecation warnings treated as errors. |
+| Whole test-suite | **823 tests pass** (407 original + 416 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
 | Type checker (`mypy`) | **No findings in the files added by this work.** 109 findings remain in files that predate it (the CI job stays informational). |
@@ -42,22 +42,22 @@ repository.
 | Missing from the request | Status in the repository |
 |---|---|
 | Market-data quality (validation, cleaning, gaps, split adjustment) | Already present: `data` |
-| Corporate actions and continuous futures | **Added:** `instruments/corporate_actions.py`, `instruments/continuous.py` |
-| Execution algorithms and transaction-cost analysis | Already present: `execution`, `analytics/tca.py` |
+| Corporate actions and continuous futures | **Added:** `market_data/instruments/corporate_actions.py`, `market_data/instruments/continuous.py` |
+| Execution algorithms and transaction-cost analysis | Already present: `execution`, `validation/analytics/tca.py` |
 | Durable state, crash recovery, broker reconciliation | Already present: `persistence` |
 | Kill switch and live risk monitor | Already present: `risk` |
-| Audit trail | Already present: `core/logging.py` (`AuditLog`) |
-| Segregation of duties between roles | **Added:** 4 new roles, 9 new permissions, role desks (`app/workspaces.py`) |
-| Strategy lifecycle with approval (research, paper, live) | **Added:** `governance/lifecycle.py` (four-eyes promotion) |
-| Model registry (versions, training-data fingerprint, rollback) | **Added:** `governance/models.py` |
-| Health monitoring and heartbeats | **Added:** `ops/health.py` |
-| Job scheduler | **Added:** `ops/scheduler.py` |
-| Market-regime detection | **Added:** `ai/hmm.py`, `volatility/management.py` |
-| Overfitting control (walk-forward, deflated Sharpe, purged CV) | Already present: `optimize`, `stats`, `research`; scorecard **added** in `analytics/evaluation.py` |
+| Audit trail | Already present: `foundation/core/logging.py` (`AuditLog`) |
+| Segregation of duties between roles | **Added:** 4 new roles, 9 new permissions, role desks (`application/app/workspaces.py`) |
+| Strategy lifecycle with approval (research, paper, live) | **Added:** `operations/governance/lifecycle.py` (four-eyes promotion) |
+| Model registry (versions, training-data fingerprint, rollback) | **Added:** `operations/governance/models.py` |
+| Health monitoring and heartbeats | **Added:** `operations/ops/health.py` |
+| Job scheduler | **Added:** `operations/ops/scheduler.py` |
+| Market-regime detection | **Added:** `learning/ai/hmm.py`, `quantitative/volatility/management.py` |
+| Overfitting control (walk-forward, deflated Sharpe, purged CV) | Already present: `optimize`, `stats`, `research`; scorecard **added** in `validation/analytics/evaluation.py` |
 | Enforced separation of concerns | **Added:** `architecture.py` (allow-list of dependencies, checked by a test) |
-| Margin model (scenario / portfolio margin) | **Added (round two):** `risk/margin.py`; default parameters, not an exchange schedule |
-| Multi-currency accounting and FX conversion | **Added (round two):** `portfolio/currency.py` |
-| Tick / order-book data and latency simulation | **Added (round two):** `brokers/orderbook.py`; a laboratory beside the bar-based engine |
+| Margin model (scenario / portfolio margin) | **Added (round two):** `capital/risk/margin.py`; default parameters, not an exchange schedule |
+| Multi-currency accounting and FX conversion | **Added (round two):** `capital/portfolio/currency.py` |
+| Tick / order-book data and latency simulation | **Added (round two):** `trading/brokers/orderbook.py`; a laboratory beside the bar-based engine |
 | Restart safety of approvals, alerts, routes, instruments, models | **Added (round two):** `TradingPlatform(store=...)` |
 | Live broker certification | **Not possible here.** Adapters are tested against fakes only. |
 
@@ -67,44 +67,44 @@ repository.
 
 | # | Requested item | Where it lives | Code | Tests |
 |---|---|---|---|---|
-| 1 | Library with error handling | `core/exceptions.py` (typed tree, `retryable` flag); 9 exception types added | done | passing (`test_core_utils`, `test_resilience`) |
-| 2 | Advanced error handling | `utils/resilience.py`: classification and policy, `Result`, fallback chain, timeout, deadline, bulkhead, error budget, error boundary, dead-letter queue, collector, context | done | passing (`test_resilience`) |
-| 3 | Multi-broker and multi-user | `users`, `brokers` (existing); 8 roles and 20 permissions in `core/enums.py`, `users/security.py` | done | passing (existing, `test_architecture_desks`) |
+| 1 | Library with error handling | `foundation/core/exceptions.py` (typed tree, `retryable` flag); 9 exception types added | done | passing (`test_core_utils`, `test_resilience`) |
+| 2 | Advanced error handling | `foundation/utils/resilience.py`: classification and policy, `Result`, fallback chain, timeout, deadline, bulkhead, error budget, error boundary, dead-letter queue, collector, context | done | passing (`test_resilience`) |
+| 3 | Multi-broker and multi-user | `users`, `brokers` (existing); 8 roles and 20 permissions in `foundation/core/enums.py`, `access/users/security.py` | done | passing (existing, `test_architecture_desks`) |
 | 4 | Order management | `orders`, `execution` (existing) | done | passing (existing) |
 | 5 | Risk management | `risk` (existing) | done | passing (existing) |
 | 6, 17 | Position sizing and fund allocation | `portfolio` (existing) | done | passing (existing) |
 | 7 | Instrument data helpers | `instruments`: contract specs, instrument master with broker symbol mapping, corporate actions, continuous futures | done | passing (`test_instruments_options`) |
-| 8 | Option data handling | `derivatives/chain.py`: option chain, implied volatility, Greeks, put/call ratio, max pain, skew, term structure, quality report | done | passing (`test_instruments_options`) |
-| 9 | Technical indicators | `technical`: 55 indicators (core set re-exported from `quant/indicators.py`) | done | passing (`test_technical`) |
+| 8 | Option data handling | `quantitative/derivatives/chain.py`: option chain, implied volatility, Greeks, put/call ratio, max pain, skew, term structure, quality report | done | passing (`test_instruments_options`) |
+| 9 | Technical indicators | `technical`: 55 indicators (core set re-exported from `quantitative/quant/indicators.py`) | done | passing (`test_technical`) |
 | 10 | Fundamental indicators | `fundamentals` (existing) | done | passing (existing) |
-| 11 | Pattern identifiers | `technical/candles.py` (19 candlestick patterns), `technical/chart_patterns.py` (double top/bottom, head and shoulders, triangles, wedges, channels, range breakout, divergence), `technical/levels.py` (swings, support/resistance, pivots) | done | passing (`test_technical`) |
-| 12 | Functions for operations and indicators | `technical/operators.py` (43 operators), `technical/catalog.py` (run any function by name), `technical/expression.py` (safe formula engine) | done | passing (`test_technical`) |
-| 13 | Strategy creator | `strategy/builder.py` (existing), `strategy/expression.py` (formula strategies), `strategy/policy.py` (model adapter) | done | passing (`test_technical`, existing) |
+| 11 | Pattern identifiers | `signals/technical/candles.py` (19 candlestick patterns), `signals/technical/chart_patterns.py` (double top/bottom, head and shoulders, triangles, wedges, channels, range breakout, divergence), `signals/technical/levels.py` (swings, support/resistance, pivots) | done | passing (`test_technical`) |
+| 12 | Functions for operations and indicators | `signals/technical/operators.py` (43 operators), `signals/technical/catalog.py` (run any function by name), `signals/technical/expression.py` (safe formula engine) | done | passing (`test_technical`) |
+| 13 | Strategy creator | `strategies/strategy/builder.py` (existing), `strategies/strategy/expression.py` (formula strategies), `strategies/strategy/policy.py` (model adapter) | done | passing (`test_technical`, existing) |
 | 14 | Backtesting and optimisation | `backtest`, `optimize` (existing) | done | passing (existing) |
 | 15 | Instrument selection | `selection`: filters, 9 rankers, external scores, diversification, group caps, one-per-cluster, pair selection | done | passing (`test_search_selection_evaluation`) |
 | 16 | Relationship management | `relationships`: correlation, beta, tail dependence, lead-lag, Granger causality, cointegration scan, clustering, spanning tree, PCA, `RelationshipManager` | done | passing (`test_relationships_volatility`) |
-| 16b | Sentiment and news analysis | `sentiment` (existing); `sentiment/llm.py` (language-model scorer with lexicon fallback) | done | passing (existing, `test_notify_ops_governance`); see limits |
+| 16b | Sentiment and news analysis | `sentiment` (existing); `signals/sentiment/llm.py` (language-model scorer with lexicon fallback) | done | passing (existing, `test_notify_ops_governance`); see limits |
 | 17b | Statistical methods | `stats` (existing) | done | passing (existing) |
 | 18 | Quantitative methods | `quant` (existing) | done | passing (existing) |
 | 19 | Volatility management and prediction | `volatility`: 5 estimators, volatility cone, EWMA / GARCH / GJR / HAR forecasters, forecast evaluation, volatility targeting, regime classifier | done | passing (`test_relationships_volatility`) |
 | 20 | Machine learning | `ml`: decision tree, random forest, gradient boosting, k-nearest neighbours, naive Bayes, lasso, PCA, k-means, voting and stacking, walk-forward prediction; `research` (existing) | done | passing (`test_learning`) |
 | 21 | Deep learning | `dl`: Dense, LSTM, Dropout, Adam, training loop, MLP, LSTM forecaster, autoencoder (numpy; gradients checked numerically) | done | passing (`test_learning`) |
 | 22 | Reinforcement learning | `rl`: trading environment, Q-learning, deep Q-network, policy gradient, three bandits | done | passing (`test_learning`) |
-| 23 | Advanced parameter optimisation | `optimize/advanced.py`: Bayesian, TPE, particle swarm, differential evolution, simulated annealing, CMA-ES, successive halving, Pareto front | done | passing (`test_search_selection_evaluation`) |
+| 23 | Advanced parameter optimisation | `validation/optimize/advanced.py`: Bayesian, TPE, particle swarm, differential evolution, simulated annealing, CMA-ES, successive halving, Pareto front | done | passing (`test_search_selection_evaluation`) |
 | 24 | Other AI methods | `ai`: hidden Markov regimes, fuzzy logic, genetic programming, isolation forest, change-point detection | done | passing (`test_learning`) |
 | 25 | Notification and alert | `notify`: 7 channels, notifier (retry, dedupe, private routing, dead letters, escalation), alert rules | done | passing (`test_notify_ops_governance`); see limits |
 | 26 | Analytics | `analytics` (existing) | done | passing (existing) |
-| 27 | Strategy result analysis | `analytics/evaluation.py`: bootstrap confidence intervals, drawdown probability, stability, regime breakdown, trade concentration, comparison, pass/fail scorecard | done | passing (`test_search_selection_evaluation`) |
-| - | One platform, different roles | `app/workspaces.py`: research, trading, portfolio, risk, operations, compliance, admin desks | done | passing (`test_architecture_desks`) |
+| 27 | Strategy result analysis | `validation/analytics/evaluation.py`: bootstrap confidence intervals, drawdown probability, stability, regime breakdown, trade concentration, comparison, pass/fail scorecard | done | passing (`test_search_selection_evaluation`) |
+| - | One platform, different roles | `application/app/workspaces.py`: research, trading, portfolio, risk, operations, compliance, admin desks | done | passing (`test_architecture_desks`) |
 | - | Structure grouped by job | `architecture.py`: 12 job groups, dependency allow-list, `check_architecture()` | done | passing (`test_architecture_desks`) |
 | - | Operations and governance (from the gap analysis) | `ops`, `governance` | done | passing (`test_notify_ops_governance`) |
-| - | Margin (from the gap analysis) | `risk/margin.py`: rule-based and scenario margin, account report, liquidation price, pre-trade `MarginCheck` | done | passing (`test_margin_currency_orderbook`) |
-| - | Multi-currency accounting (from the gap analysis) | `portfolio/currency.py`: point-in-time FX rates with cross rates, cash per currency, exposure, FX P&L attribution, hedge amounts | done | passing (`test_margin_currency_orderbook`) |
-| - | Order book and tick simulation (from the gap analysis) | `brokers/orderbook.py`: matching engine, queue position, cost to trade, seeded simulator with latency, tick-to-bar | done | passing (`test_margin_currency_orderbook`) |
-| - | Restart safety of the shared services | `save_state` / `load_state` / autosave in `app/platform.py`; `export_state` / `import_state` on each service | done | passing (`test_state_persistence`, `test_web_quant`) |
-| - | Web UI for the new features | `web/quant_api.py`, six pages in `web/static/app.js` | done | passing (`test_web_quant`); browser walkthrough |
-| - | Sample data generator, historical data from a broker or data provider, sample/real switch (round four) | `data/synthetic.py` (scenarios), `data/providers.py`, `data/library.py`, `app/marketdata.py`, `web/data_api.py`, Price data and Data providers pages, header switch, paper-trading replay | done | passing (`test_data_providers`, `test_market_data_service`, `test_web_data`); browser walkthrough with a fake Alpaca |
-| - | Web UI grouped by job (round three) | `web/static/app.js` (menu by job group, hash routing, Home), `web/research_api.py` (option chain, sentiment, prediction models, regimes), `web/desk_api.py` (instruments, margin, currency, order book, health), 8 optimiser methods, audit log on the compliance permission | done | passing (`test_web_groups`); browser walkthrough as 8 roles |
+| - | Margin (from the gap analysis) | `capital/risk/margin.py`: rule-based and scenario margin, account report, liquidation price, pre-trade `MarginCheck` | done | passing (`test_margin_currency_orderbook`) |
+| - | Multi-currency accounting (from the gap analysis) | `capital/portfolio/currency.py`: point-in-time FX rates with cross rates, cash per currency, exposure, FX P&L attribution, hedge amounts | done | passing (`test_margin_currency_orderbook`) |
+| - | Order book and tick simulation (from the gap analysis) | `trading/brokers/orderbook.py`: matching engine, queue position, cost to trade, seeded simulator with latency, tick-to-bar | done | passing (`test_margin_currency_orderbook`) |
+| - | Restart safety of the shared services | `save_state` / `load_state` / autosave in `application/app/platform.py`; `export_state` / `import_state` on each service | done | passing (`test_state_persistence`, `test_web_quant`) |
+| - | Web UI for the new features | `application/web/quant_api.py`, six pages in `application/web/static/app.js` | done | passing (`test_web_quant`); browser walkthrough |
+| - | Sample data generator, historical data from a broker or data provider, sample/real switch (round four) | `market_data/data/synthetic.py` (scenarios), `market_data/data/providers.py`, `market_data/data/library.py`, `application/app/marketdata.py`, `application/web/data_api.py`, Price data and Data providers pages, header switch, paper-trading replay | done | passing (`test_data_providers`, `test_market_data_service`, `test_web_data`); browser walkthrough with a fake Alpaca |
+| - | Web UI grouped by job (round three) | `application/web/static/app.js` (menu by job group, hash routing, Home), `application/web/research_api.py` (option chain, sentiment, prediction models, regimes), `application/web/desk_api.py` (instruments, margin, currency, order book, health), 8 optimiser methods, audit log on the compliance permission | done | passing (`test_web_groups`); browser walkthrough as 8 roles |
 
 ---
 
@@ -127,10 +127,12 @@ Print it at any time with `PYTHONPATH=src python -m algoplatform structure`. Ful
 | 11 | Operations and control | `persistence`, `notify`, `ops`, `governance` |
 | 12 | Application | `app`, `web` |
 
-Existing packages were kept at their original import paths (so the 407 original tests keep guarding them); the
-grouping is expressed in `architecture.py` and enforced by its dependency check rather than by moving directories.
-Moving the directories into group folders is possible later; it would change every import path and is a decision for
-the owner of the repository.
+Since round six every package lives in its job group's folder: `src/algoplatform/<group>/<package>`, for example
+`capital/risk`, `signals/technical`, `application/web` (folders: `foundation`, `access`, `market_data`, `signals`,
+`quantitative`, `learning`, `strategies`, `capital`, `trading`, `validation`, `operations`, `application`). The two
+groups whose key matched a package inside them were renamed (`quant` → `quantitative`, `strategy` → `strategies`), and
+so were their route module and page script. `check_architecture()` fails if a package sits at the top level or in
+another group's folder. File paths elsewhere in this record are relative to `src/algoplatform`.
 
 ---
 
@@ -140,36 +142,36 @@ the owner of the repository.
 
 | Package | Files |
 |---|---|
-| `technical/` | `trend.py`, `momentum.py`, `bands.py`, `volume.py`, `levels.py`, `candles.py`, `chart_patterns.py`, `operators.py`, `catalog.py`, `expression.py` |
-| `instruments/` | `contracts.py`, `master.py`, `corporate_actions.py`, `continuous.py` |
-| `relationships/` | `correlation.py`, `leadlag.py`, `cointegration.py`, `structure.py`, `manager.py` |
-| `volatility/` | `estimators.py`, `models.py`, `evaluation.py`, `management.py` |
-| `ml/` | `tree.py`, `classic.py`, `unsupervised.py`, `ensemble.py`, `metrics.py`, `pipeline.py` |
-| `dl/` | `nn.py`, `models.py` |
-| `rl/` | `env.py`, `agents.py`, `bandits.py` |
-| `ai/` | `hmm.py`, `fuzzy.py`, `genetic_programming.py`, `anomaly.py`, `changepoint.py` |
-| `selection/` | `rankers.py`, `selector.py` |
-| `notify/` | `message.py`, `channels.py`, `notifier.py`, `alerts.py` |
-| `ops/` | `health.py`, `scheduler.py` |
-| `governance/` | `lifecycle.py`, `models.py` |
+| `signals/technical/` | `trend.py`, `momentum.py`, `bands.py`, `volume.py`, `levels.py`, `candles.py`, `chart_patterns.py`, `operators.py`, `catalog.py`, `expression.py` |
+| `market_data/instruments/` | `contracts.py`, `master.py`, `corporate_actions.py`, `continuous.py` |
+| `quantitative/relationships/` | `correlation.py`, `leadlag.py`, `cointegration.py`, `structure.py`, `manager.py` |
+| `quantitative/volatility/` | `estimators.py`, `models.py`, `evaluation.py`, `management.py` |
+| `learning/ml/` | `tree.py`, `classic.py`, `unsupervised.py`, `ensemble.py`, `metrics.py`, `pipeline.py` |
+| `learning/dl/` | `nn.py`, `models.py` |
+| `learning/rl/` | `env.py`, `agents.py`, `bandits.py` |
+| `learning/ai/` | `hmm.py`, `fuzzy.py`, `genetic_programming.py`, `anomaly.py`, `changepoint.py` |
+| `strategies/selection/` | `rankers.py`, `selector.py` |
+| `operations/notify/` | `message.py`, `channels.py`, `notifier.py`, `alerts.py` |
+| `operations/ops/` | `health.py`, `scheduler.py` |
+| `operations/governance/` | `lifecycle.py`, `models.py` |
 
 Each package also has an `__init__.py` that exports its public names.
 
 ### New files in existing packages
 
-`data/providers.py`, `data/library.py`, `app/marketdata.py`, `web/data_api.py` (round four); `web/research_api.py`, `web/desk_api.py` (round three); `risk/margin.py`, `portfolio/currency.py`, `brokers/orderbook.py`, `web/quant_api.py` (round two);
-`utils/resilience.py`, `utils/numeric.py`, `derivatives/chain.py`, `optimize/advanced.py`, `analytics/evaluation.py`,
-`sentiment/llm.py`, `strategy/expression.py`, `strategy/policy.py`, `app/workspaces.py`, and the top-level
+`market_data/data/providers.py`, `market_data/data/library.py`, `application/app/marketdata.py`, `application/web/data_api.py` (round four); `application/web/research_api.py`, `application/web/desk_api.py` (round three); `capital/risk/margin.py`, `capital/portfolio/currency.py`, `trading/brokers/orderbook.py`, `application/web/quant_api.py` (round two);
+`foundation/utils/resilience.py`, `foundation/utils/numeric.py`, `quantitative/derivatives/chain.py`, `validation/optimize/advanced.py`, `validation/analytics/evaluation.py`,
+`signals/sentiment/llm.py`, `strategies/strategy/expression.py`, `strategies/strategy/policy.py`, `application/app/workspaces.py`, and the top-level
 `architecture.py`.
 
 ### Modified source files
 
-`core/exceptions.py` (9 exception types), `core/enums.py` (4 roles, 9 permissions, `Severity`), `core/__init__.py`,
-`users/security.py` (role-to-permission table), `utils/__init__.py`, `strategy/__init__.py`, `derivatives/__init__.py`,
-`sentiment/__init__.py`, `analytics/__init__.py`, `optimize/__init__.py`, `optimize/optimizers.py` (dispatcher knows the
-new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py` (new shared services, `desk()` /
-`desks()`), `app/__init__.py`, `app/cli.py` (`structure` and `functions` commands, new optimiser names),
-`web/static/app.js` and `web/static/styles.css` (rebuilt around the job groups in round three), `web/server.py` (registers the new route files, optimiser methods, audit permission), `architecture.py` (web allow-list), `app/workspaces.py` (`load_instruments(overwrite=...)`), `algoplatform/__init__.py` (version 0.2.0). Round four: `core/exceptions.py` (three data-provider errors), `data/synthetic.py` (scenarios), `data/__init__.py`, `app/platform.py` (`TradingPlatform.data`, parts saved only when changed), `app/workspaces.py` (data desk methods), `web/server.py` (data source of every request, history replay), `web/desk_api.py` (market-data health check), `web/static/*` (switch, Price data and Data providers pages), `pyproject.toml` (`ib` extra).
+`foundation/core/exceptions.py` (9 exception types), `foundation/core/enums.py` (4 roles, 9 permissions, `Severity`), `foundation/core/__init__.py`,
+`access/users/security.py` (role-to-permission table), `foundation/utils/__init__.py`, `strategies/strategy/__init__.py`, `quantitative/derivatives/__init__.py`,
+`signals/sentiment/__init__.py`, `validation/analytics/__init__.py`, `validation/optimize/__init__.py`, `validation/optimize/optimizers.py` (dispatcher knows the
+new methods), `quantitative/stats/tests.py` (half-life fix, see section 8), `application/app/platform.py` (new shared services, `desk()` /
+`desks()`), `application/app/__init__.py`, `application/app/cli.py` (`structure` and `functions` commands, new optimiser names),
+`application/web/static/app.js` and `application/web/static/styles.css` (rebuilt around the job groups in round three), `application/web/server.py` (registers the new route files, optimiser methods, audit permission), `architecture.py` (web allow-list), `application/app/workspaces.py` (`load_instruments(overwrite=...)`), `algoplatform/__init__.py` (version 0.2.0). Round four: `foundation/core/exceptions.py` (three data-provider errors), `market_data/data/synthetic.py` (scenarios), `market_data/data/__init__.py`, `application/app/platform.py` (`TradingPlatform.data`, parts saved only when changed), `application/app/workspaces.py` (data desk methods), `application/web/server.py` (data source of every request, history replay), `application/web/desk_api.py` (market-data health check), `application/web/static/*` (switch, Price data and Data providers pages), `pyproject.toml` (`ib` extra).
 
 ### Other new or changed files
 
@@ -187,8 +189,8 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_relationships_volatility.py` | 32 | passing |
 | `tests/test_learning.py` (ml, dl, rl, ai) | 45 | passing |
 | `tests/test_search_selection_evaluation.py` | 30 | passing |
-| `tests/test_notify_ops_governance.py` (incl. `sentiment/llm.py`) | 46 | passing |
-| `tests/test_architecture_desks.py` | 26 | passing |
+| `tests/test_notify_ops_governance.py` (incl. `signals/sentiment/llm.py`) | 46 | passing |
+| `tests/test_architecture_desks.py` | 27 | passing |
 | `tests/test_margin_currency_orderbook.py` | 39 | passing |
 | `tests/test_state_persistence.py` | 19 | passing |
 | `tests/test_web_quant.py` | 15 | passing |
@@ -197,11 +199,22 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_market_data_service.py` (connections, keys, downloads, sample-only lock, environment, restart) | 8 | passing |
 | `tests/test_web_data.py` (data routes, source of every request, lock on the server, history replay and its restart) | 9 | passing |
 | `tests/test_cli.py` (data sources, data commands with a fake Alpaca, the shared lock, the web command) | 7 | passing |
-| **Total** | **822** | **passing** |
+| **Total** | **823** | **passing** |
 
 ---
 
 ## 6. Pending tasks
+
+**Round six, done** (requested: "move packages into one folder per job group"):
+
+| Part | State |
+|---|---|
+| 34 packages moved with `git mv` into 12 group folders (history kept: git records 200 renames); a group `__init__.py` names each group's job | done |
+| Every relative import recomputed from the file's new location (190 files); absolute `algoplatform.<package>` names updated in tests, examples and documents (45 files) | done |
+| Group keys `quant` → `quantitative`, `strategy` → `strategies` (they clashed with packages inside them); route modules and page scripts renamed to match | done |
+| `check_architecture()` for the new layout: packages found inside group folders; a package at the top level, in another group's folder, or unassigned is a violation; `architecture.package_dir()` | done, tested |
+| Packaging: the wheel shipped only `static/*` (missing the 13 scripts added in round five); now ships `static/js/**` too; console script checked from an installed wheel | done, verified in a fresh virtual environment |
+
 
 **Round five, done** (requested: audit the whole file structure; remove messy, duplicate and unnecessary files;
 check frontend, backend, middleware, database and API against the platform's rules; a switch for which sample data to use).
@@ -212,7 +225,7 @@ check frontend, backend, middleware, database and API against the platform's rul
 | Small fixes: the order manager refuses a reused order id (`DuplicateOrderError`) instead of overwriting; unused `make_loopback` removed; ignore rules for tool caches and logs; 39 local cache folders and a generated report deleted | **done, tested** |
 | Database: downloaded history moved from one JSON document to `bar_series` / `bars` tables (schema v3, upgrade in place), written as it changes; old-format history moved once; `App.close()` closes every database (no more unclosed-connection warnings in the web tests) | **done, tested** |
 | CLI updated (requested during round five): `backtest` / `optimize` take `--source sample|history|csv` and `--scenario`; new `data` commands (scenarios, sample, providers, fetch, list, export, remove, sample-only) on the same state directory and service as the web server; `web` command through the top-level launcher (the installed `algoplatform` command now points there) | **done, tested** (`test_cli`) |
-| API: the 60 routes moved unchanged from five mixed files into `web/routes/<group>.py`, one module per job group; `web/http.py` (middleware), `web/session.py` (paper feed), `web/common.py` (shared helpers); `web/server.py` down from 912 to 289 lines (the app only); `quant_api.py`, `research_api.py`, `desk_api.py`, `data_api.py` deleted; tests check route modules = job groups and each page calls its own group's routes; 3 old type findings fixed on the way | **done, tested** (full suite, browser walkthrough) |
+| API: the 60 routes moved unchanged from five mixed files into `application/web/routes/<group>.py`, one module per job group; `application/web/http.py` (middleware), `application/web/session.py` (paper feed), `application/web/common.py` (shared helpers); `application/web/server.py` down from 912 to 289 lines (the app only); `quant_api.py`, `research_api.py`, `desk_api.py`, `data_api.py` deleted; tests check route modules = job groups and each page calls its own group's routes; 3 old type findings fixed on the way | **done, tested** (full suite, browser walkthrough) |
 | Frontend: `app.js` (1,744 lines) split into `js/core.js`, `js/pages/<group>.js` (one per job group, same names as the route modules) and `js/shell.js`; a sample-scenario dropdown beside the Sample / Real switch sets the scenario every data form and the generator start with; tests check each page lives in its group's script and the load order | **done, tested** (full suite, three browser walkthroughs) |
 
 
@@ -221,21 +234,21 @@ connect a data provider; add a switch for sample data"). All three were built:
 
 | Part | Where | State |
 |---|---|---|
-| Sample data generator: 8 named scenarios, daily or intraday, seeded, symbol-stable | `data/synthetic.py`, `SampleDataProvider`; Price data page; every data form | done, tested |
-| Historical data from Alpaca (stocks and crypto) and Interactive Brokers (TWS / IB Gateway) | `data/providers.py`; Data providers page (operations) and Price data page (download) | done, **tested against fakes only** |
-| A data provider connection: keys in the credential vault, or environment variables at start-up | `app/marketdata.py` | done, tested |
-| Shared history library, saved with the platform state | `data/library.py` | done, tested |
-| Switch for sample data: per browser in the header (Sample / Real), and a platform-wide sample-data-only lock for operations that the server enforces | `web/static/app.js`, `app/marketdata.py` | done, tested |
-| Paper trading on replayed downloaded history (survives a restart) | `web/server.py` `LiveSession` | done, tested |
+| Sample data generator: 8 named scenarios, daily or intraday, seeded, symbol-stable | `market_data/data/synthetic.py`, `SampleDataProvider`; Price data page; every data form | done, tested |
+| Historical data from Alpaca (stocks and crypto) and Interactive Brokers (TWS / IB Gateway) | `market_data/data/providers.py`; Data providers page (operations) and Price data page (download) | done, **tested against fakes only** |
+| A data provider connection: keys in the credential vault, or environment variables at start-up | `application/app/marketdata.py` | done, tested |
+| Shared history library, saved with the platform state | `market_data/data/library.py` | done, tested |
+| Switch for sample data: per browser in the header (Sample / Real), and a platform-wide sample-data-only lock for operations that the server enforces | `application/web/static/app.js`, `application/app/marketdata.py` | done, tested |
+| Paper trading on replayed downloaded history (survives a restart) | `application/web/server.py` `LiveSession` | done, tested |
 
 Rounds two to four completed every pending item that can be done from this environment. What is left:
 
 | # | Task | State | Why it is not done |
 |---|---|---|---|
-| 1 | Merge pull request #4 (rounds three to five) into the default branch | **waiting for the owner** | Opened: https://github.com/olmahelp-source/EPAT-LLD/pull/4. Merging is the owner's decision, as with #2 and #3. |
+| 1 | (none waiting) | - | Pull request #4 was merged; the default branch holds all the work. |
 | 2 | Run the integrations against real services: Claude sentiment client, Slack, Telegram, webhook, e-mail, broker sandboxes, **Alpaca market data, Interactive Brokers history** | **blocked** | Needs the owner's credentials and accounts (and, for IB, a running TWS or IB Gateway); nothing here should send messages or orders to real services. All are tested against fakes. Alpaca's data server answered from this environment (HTTP 401 without keys), so the Alpaca check can be run here once keys are supplied: set them on the Data providers page and press Test. |
 | 3 | Type findings in the 112 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
-| 4 | Move packages into one folder per job group | not started, optional | Changes every import path; a decision for the owner. The grouping is already enforced by `architecture.py`. |
+| 4 | (done in round six) Move packages into one folder per job group | **done** | See section 4. |
 
 Done in round two (previously pending): web UI for the new features; persistence of the new shared services; type
 findings in new files; margin model; multi-currency accounting; order-book and tick simulator; documentation.
@@ -274,7 +287,7 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | headless browser against a live server with `--db-dir`, all eight roles, desktop and 390 px phone width | each role's menu holds exactly its pages; every page's main action works (option chain, sentiment, 7 models, regimes, margin from entered and from paper positions, currency, order book, instrument load, health, audit filter, Bayesian optimisation); a forbidden deep link falls back to Home; phone menu opens and closes; no page wider than the screen; no "null", "undefined" or "NaN" on any page; no JavaScript errors; loaded instruments still there after a server restart |
 | 2026-11-13 | GitHub Actions, workflow "CI", run 24 (commit `a1b58dd`, round three) | lint: success; test 3.10, 3.11, 3.12, 3.13: success; optional-dependencies: success; run conclusion: success; typecheck (informational): failure, 112 findings, same files as locally, none in files added by this work |
 | 2026-11-13 | GitHub Actions, runs 18 to 22 (round two, including pull-request runs 20 and 22) | all success |
-| 2026-11-13 | `cd tests && python -m unittest test_data_providers`; full suite (exit status checked); ruff; structure check; mypy on `data/` | 18 tests OK; **791 tests, OK**; clean; dependency rules OK; no findings in the new data files |
+| 2026-11-13 | `cd tests && python -m unittest test_data_providers`; full suite (exit status checked); ruff; structure check; mypy on `market_data/data/` | 18 tests OK; **791 tests, OK**; clean; dependency rules OK; no findings in the new data files |
 | 2026-11-13 | `cd tests && python -m unittest test_market_data_service test_state_persistence`; full suite (exit status checked); ruff; structure; mypy | 27 tests OK; **799 tests, OK**; clean; OK; 112 findings, all in pre-existing files |
 | 2026-11-13 | `cd tests && python -m unittest test_web_data test_web_groups` | 25 tests, OK |
 | 2026-11-13 | full suite with deprecation warnings as errors (exit status checked); ruff; structure check; mypy | **808 tests, OK**; clean; dependency rules OK; 112 findings, all in pre-existing files |
@@ -288,6 +301,8 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | after the frontend split: `test_web_groups`, `test_web`; full suite (exit status checked); ruff; structure; mypy; browser: scenario dropdown, data walkthrough with a fake Alpaca, all-roles walkthrough on a fresh server, every page as admin | 29 tests OK; **822 tests, OK**; clean; OK; 109 pre-existing findings; all walkthroughs passed (13 scripts load, no JavaScript errors, no page wider than a phone, no "null") |
 | 2026-11-13 | GitHub Actions runs 29 to 33 (round five, commits `b5c45e0` to `36a432f`) | all success |
 | 2026-11-13 | pull request #4 opened (GitHub API) | https://github.com/olmahelp-source/EPAT-LLD/pull/4, base `claude/trading-platform-system-y9ke4s`, 11 commits, 63 files |
+| 2026-11-13 | pull request #4 (GitHub API); CI runs 35 (push) and 36 (pull request) on `568faae` | merged at 14:00:57 UTC; lint, tests on Python 3.10 to 3.13 and optional-dependencies all success (typecheck informational) |
+| 2026-11-13 | round six: full suite (exit status checked); ruff; structure check; mypy; examples; wheel built and installed in a fresh virtual environment (`algoplatform structure --check`, `algoplatform data scenarios`, static files present, API answers); browser: all-roles walkthrough, every page as admin, scenario check | **823 tests, OK**; clean; OK; 109 pre-existing findings; all 3 examples run; installed wheel works (15 static files, 12 group folders); walkthroughs passed, no JavaScript errors |
 | 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---
@@ -350,7 +365,7 @@ that a 90% interval always contains zero for one random sample).
 - Learning models are numpy implementations sized for daily data. They are not a substitute for a GPU framework.
 - The reinforcement-learning and genetic-programming tests use synthetic data with a planted edge. They show that the
   machinery learns, not that any real market edge exists.
-- `sentiment/llm.py`: the Claude client wrapper was checked against the SDK's method signature but has **not** been
+- `signals/sentiment/llm.py`: the Claude client wrapper was checked against the SDK's method signature but has **not** been
   run against the live API (no credentials in this environment). The scorer is tested with fake completers.
 - Notification channels (Slack, Telegram, webhook, e-mail) are tested against injected fakes, never a real service.
 - Chart-pattern detection is rule-based on confirmed swings; thresholds are parameters, not calibrated truths.

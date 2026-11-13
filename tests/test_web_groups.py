@@ -6,11 +6,11 @@ import unittest
 
 import helpers  # noqa: F401
 from algoplatform.architecture import GROUPS
-from algoplatform.core import Permission, Role
-from algoplatform.users import ROLE_PERMISSIONS
+from algoplatform.foundation.core import Permission, Role
+from algoplatform.access.users import ROLE_PERMISSIONS
 from test_web_quant import WebQuantTestCase
 
-STATIC = os.path.join(os.path.dirname(__file__), "..", "src", "algoplatform", "web", "static")
+STATIC = os.path.join(os.path.dirname(__file__), "..", "src", "algoplatform", "application", "web", "static")
 JS = os.path.join(STATIC, "js")
 
 
@@ -105,7 +105,7 @@ class ScriptsFollowTheStructureTests(unittest.TestCase):
 class ApiFollowsTheStructureTests(unittest.TestCase):
     """The API has one route module per job group, and every page calls routes of its own group."""
 
-    ROUTES_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "algoplatform", "web", "routes")
+    ROUTES_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "algoplatform", "application", "web", "routes")
 
     def registered(self):
         out = {}
@@ -116,7 +116,7 @@ class ApiFollowsTheStructureTests(unittest.TestCase):
         return out
 
     def test_route_modules_are_the_job_groups(self):
-        from algoplatform.web.routes import MODULES
+        from algoplatform.application.web.routes import MODULES
         modules = self.registered()
         self.assertEqual(set(modules), {g.key for g in GROUPS} - {"foundation"})
         self.assertEqual(set(MODULES), set(modules))

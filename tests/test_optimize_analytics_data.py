@@ -8,16 +8,16 @@ import numpy as np
 import pandas as pd
 
 from helpers import df_from_closes, free_config, market_from_closes
-from algoplatform.analytics import (build_report, drawdown_periods, drawdown_series, html_report, infer_periods_per_year,
+from algoplatform.validation.analytics import (build_report, drawdown_periods, drawdown_series, html_report, infer_periods_per_year,
                                     max_drawdown, monthly_returns, performance_metrics, rolling_sharpe, text_report,
                                     to_json, trade_statistics, contribution_by, trades_frame)
-from algoplatform.backtest import BacktestEngine
-from algoplatform.core.exceptions import DataError, MissingDataError, OptimizationError, ValidationError
-from algoplatform.data import MarketData, adjust_for_split, clean_ohlcv, find_gaps, synthetic, validate_ohlcv
-from algoplatform.optimize import (Param, ParameterSpace, backtest_objective, genetic_search, grid_search, optimize,
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.foundation.core.exceptions import DataError, MissingDataError, OptimizationError, ValidationError
+from algoplatform.market_data.data import MarketData, adjust_for_split, clean_ohlcv, find_gaps, synthetic, validate_ohlcv
+from algoplatform.validation.optimize import (Param, ParameterSpace, backtest_objective, genetic_search, grid_search, optimize,
                                    random_search, walk_forward)
-from algoplatform.portfolio import Trade
-from algoplatform.strategy import SMACrossover
+from algoplatform.capital.portfolio import Trade
+from algoplatform.strategies.strategy import SMACrossover
 
 
 # ---------------------------------------------------------------------------- optimisation

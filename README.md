@@ -2,7 +2,7 @@
 
 One codebase for **research -> backtest -> paper -> live**. The same `TradingEngine` runs a backtest and a live session, so what you test is what you trade. Built from the 850-topic master list kept in the EPAT-Executive repo (`TRADING_PLATFORM_MASTER_TOPICS.md`); this repository holds the platform's low-level design and implementation.
 
-Pure Python 3.10+ with `numpy` and `pandas`. No scipy: the statistical functions are implemented in `stats/special.py`.
+Pure Python 3.10+ with `numpy` and `pandas`. No scipy: the statistical functions are implemented in `quantitative/stats/special.py`.
 
 ```
 pip install -e .                    # from this folder (optional: ".[security]" for encrypted credentials, ".[ib]" for Interactive Brokers data)
@@ -34,7 +34,7 @@ its options.
 | `data list`, `data export SYMBOL --out f.csv`, `data remove SYMBOL` | manage the downloaded history |
 | `data sample-only on\|off\|status` | the platform-wide sample-data-only lock, shared with the web server |
 | `structure [--check]`, `functions` | the job groups and dependency rules; the formula catalogue |
-| `web [--host] [--port] [--db-dir]` | start the web UI and JSON API (also `python -m algoplatform.web`) |
+| `web [--host] [--port] [--db-dir]` | start the web UI and JSON API (also `python -m algoplatform.application.web`) |
 
 Data commands act as the local administrator `cli` through the same platform service as the web pages, so the lock,
 the audit trail and key handling are the same. Provider keys come only from the environment
@@ -50,7 +50,7 @@ Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structure by jo
 python -m algoplatform web --port 8080                    # then open http://127.0.0.1:8080 (PYTHONPATH=src if not installed)
 python -m algoplatform web --port 8080 --db-dir ./state   # users, sessions, approvals, alerts and downloaded history survive a restart
 ```
-Standard-library server plus a no-build single-page UI (`src/algoplatform/web/`). The menu is grouped by the same
+Standard-library server plus a no-build single-page UI (`src/algoplatform/application/web/`). The menu is grouped by the same
 job groups as the code (`architecture.py`), and each page says which group it belongs to and the question that group
 answers:
 
@@ -93,8 +93,8 @@ again or written to disk, and must be entered again after a restart; keys from t
 - The first account created becomes the administrator; later sign-ups are traders. Raise roles on the Users and roles page (a Risk Manager or Admin is needed to reset a tripped kill switch).
 - Every call goes through `TradingPlatform`, so permissions are enforced server-side, not just hidden in the UI. Server text is rendered with `textContent` only, responses carry CSP and no-sniff headers, and the stream authenticates with a header (never a URL token).
 - **Localhost only.** There is no TLS. Do not expose it to a network without a TLS reverse proxy and your own auth in front. Uploaded data lives in server memory.
-- Frontend: no build step. `web/static/js/core.js` (DOM, charts, API client, shared form parts), one script per job group in `web/static/js/pages/` (the same names as the route modules), and `js/shell.js` (sign-in, menu, routing, the data switch), loaded last by `index.html`.
-- API: one module per job group in `web/routes/` (`access`, `market_data`, `signals`, `quant`, `learning`, `strategy`, `capital`, `trading`, `validation`, `operations`, `application`); `web/server.py` is the app (route table, dispatch, error mapping), `web/http.py` the HTTP middleware (limits, headers, static files, the event stream), `web/session.py` the paper-trading feed. Every research route takes `source` = `sample` (with an optional `scenario`), `history` or `uploaded`.
+- Frontend: no build step. `application/web/static/js/core.js` (DOM, charts, API client, shared form parts), one script per job group in `application/web/static/js/pages/` (the same names as the route modules), and `js/shell.js` (sign-in, menu, routing, the data switch), loaded last by `index.html`.
+- API: one module per job group in `application/web/routes/` (`access`, `market_data`, `signals`, `quant`, `learning`, `strategy`, `capital`, `trading`, `validation`, `operations`, `application`); `application/web/server.py` is the app (route table, dispatch, error mapping), `application/web/http.py` the HTTP middleware (limits, headers, static files, the event stream), `application/web/session.py` the paper-trading feed. Every research route takes `source` = `sample` (with an optional `scenario`), `history` or `uploaded`.
 
 ## Architecture
 
@@ -119,20 +119,23 @@ Layers only depend downward; strategies never see orders or brokers, risk never 
 
 ## Structure, grouped by job
 
-| # | Job group | Packages | Main roles |
-|---|---|---|---|
-| 1 | Foundation | `core`, `utils` | everyone |
-| 2 | Access control | `users` | Admin |
-| 3 | Market and reference data | `data`, `instruments` | Operations, Quant |
-| 4 | Signal libraries | `technical`, `fundamentals`, `sentiment` | Quant |
-| 5 | Quantitative research | `stats`, `quant`, `derivatives`, `relationships`, `volatility` | Quant |
-| 6 | Learning and AI | `research`, `ml`, `dl`, `rl`, `ai` | Quant |
-| 7 | Strategy | `strategy`, `selection` | Quant, Trader |
-| 8 | Portfolio and risk | `portfolio`, `risk` | Portfolio manager, Risk manager |
-| 9 | Trading | `brokers`, `orders`, `execution` | Trader |
-| 10 | Validation | `backtest`, `optimize`, `analytics` | Quant, Portfolio manager |
-| 11 | Operations and control | `persistence`, `notify`, `ops`, `governance` | Operations, Risk manager, Auditor |
-| 12 | Application | `app`, `web` | everyone, through role desks |
+Every package lives in the folder of its job group, so the import path says the job: `algoplatform.capital.risk`,
+`algoplatform.signals.technical`, `algoplatform.application.web`. A test fails if a package sits outside its group's folder.
+
+| # | Job group | Folder | Packages | Main roles |
+|---|---|---|---|---|
+| 1 | Foundation | `foundation/` | `core`, `utils` | everyone |
+| 2 | Access control | `access/` | `users` | Admin |
+| 3 | Market and reference data | `market_data/` | `data`, `instruments` | Operations, Quant |
+| 4 | Signal libraries | `signals/` | `technical`, `fundamentals`, `sentiment` | Quant |
+| 5 | Quantitative research | `quantitative/` | `stats`, `quant`, `derivatives`, `relationships`, `volatility` | Quant |
+| 6 | Learning and AI | `learning/` | `research`, `ml`, `dl`, `rl`, `ai` | Quant |
+| 7 | Strategy | `strategies/` | `strategy`, `selection` | Quant, Trader |
+| 8 | Portfolio and risk | `capital/` | `portfolio`, `risk` | Portfolio manager, Risk manager |
+| 9 | Trading | `trading/` | `brokers`, `orders`, `execution` | Trader |
+| 10 | Validation | `validation/` | `backtest`, `optimize`, `analytics` | Quant, Portfolio manager |
+| 11 | Operations and control | `operations/` | `persistence`, `notify`, `ops`, `governance` | Operations, Risk manager, Auditor |
+| 12 | Application | `application/` | `app`, `web` | everyone, through role desks |
 
 ## Module map
 
@@ -194,10 +197,10 @@ Layers only depend downward; strategies never see orders or brokers, risk never 
 ## Quick start
 
 ```python
-from algoplatform.data import MarketData, synthetic
-from algoplatform.backtest import BacktestEngine
-from algoplatform.strategy import SMACrossover
-from algoplatform.core import PlatformConfig
+from algoplatform.market_data.data import MarketData, synthetic
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.strategies.strategy import SMACrossover
+from algoplatform.foundation.core import PlatformConfig
 
 md = MarketData()
 for sym, df in synthetic.universe(["AAA", "BBB"], n=750).items():
@@ -209,7 +212,7 @@ print(result.metrics()["sharpe"], result.trade_stats()["win_rate"])
 
 ### Define a strategy without code
 ```python
-from algoplatform.strategy import StrategyBuilder, create_from_spec
+from algoplatform.strategies.strategy import StrategyBuilder, create_from_spec
 spec = (StrategyBuilder("rsi_trend").param("lvl", 35)
         .indicator("rsi", "rsi", period=14).indicator("trend", "sma", period=100).indicator("atr", "atr", period=14)
         .long_entry(("rsi", "<", "$lvl"), ("close", ">", "trend")).long_exit(("rsi", ">", 60))
@@ -219,9 +222,9 @@ strategy = create_from_spec(spec, ["AAA"])
 
 ### Write a strategy in code
 ```python
-from algoplatform.strategy import Strategy, STRATEGIES
-from algoplatform.core import Signal
-from algoplatform.quant import sma
+from algoplatform.strategies.strategy import Strategy, STRATEGIES
+from algoplatform.foundation.core import Signal
+from algoplatform.quantitative.quant import sma
 
 @STRATEGIES.register("my_trend")
 class MyTrend(Strategy):
@@ -241,7 +244,7 @@ class MyTrend(Strategy):
 
 ### Define a strategy as formulas
 ```python
-from algoplatform.strategy import create_from_expressions
+from algoplatform.strategies.strategy import create_from_expressions
 spec = {"name": "trend_pullback", "params": {"fast": 20, "slow": 100}, "bounds": {"fast": [5, 60], "slow": [60, 250]},
         "long_entry": "ema(close, fast) > ema(close, slow) and crossover(rsi(close, 14), 40)",
         "long_exit": "crossunder(close, ema(close, slow)) or rsi(close, 14) > 80", "stop_pct": 0.08}
@@ -251,7 +254,7 @@ strategy = create_from_expressions(spec, ["AAA"])     # any catalogue function w
 
 ### Choose what to trade, point-in-time
 ```python
-from algoplatform.selection import UniverseSelector
+from algoplatform.strategies.selection import UniverseSelector
 picked = (UniverseSelector().require_history(252).min_dollar_volume(2e6)
           .rank_by("momentum", lookback=126).rank_by("low_volatility", weight=0.5)
           .diversify(max_correlation=0.8).per_group(sectors, 2).top(10)
@@ -260,20 +263,20 @@ picked = (UniverseSelector().require_history(252).min_dollar_volume(2e6)
 
 ### Score a result before believing it
 ```python
-from algoplatform.analytics import evaluate_backtest
+from algoplatform.validation.analytics import evaluate_backtest
 verdict = evaluate_backtest(result, n_trials=opt.n_trials)   # the bar rises with the number of things tried
 verdict.passed, verdict.grade, verdict.failures
 ```
 
 ### Size by volatility and regime
 ```python
-from algoplatform.volatility import VolatilityManager
+from algoplatform.quantitative.volatility import VolatilityManager
 view = VolatilityManager(target_vol=0.10, model="garch").assess(returns)   # forecast_vol, regime, scalar (exposure multiplier)
 ```
 
 ### Alerts and notifications
 ```python
-from algoplatform.notify import SlackChannel, drawdown_alert
+from algoplatform.operations.notify import SlackChannel, drawdown_alert
 platform.notifier.add_channel(SlackChannel(webhook_url), min_severity=Severity.ERROR)   # kill switch and risk breaches arrive by themselves
 platform.alerts.add(drawdown_alert(0.10, for_count=2))
 platform.alerts.evaluate({"drawdown": 0.12})          # call every bar; fires once, repeats after the cooldown, reports when resolved
@@ -315,9 +318,9 @@ result = random_search(obj, space, n_iter=60, n_jobs=4)       # same trial table
 
 ### Run a permission-checked session
 ```python
-from algoplatform.app import TradingPlatform
-from algoplatform.core import Role
-from algoplatform.strategy import SMACrossover
+from algoplatform.application.app import TradingPlatform
+from algoplatform.foundation.core import Role
+from algoplatform.strategies.strategy import SMACrossover
 plat = TradingPlatform()
 admin = plat.users.register("admin_user", "Str0ng-Passw0rd!", Role.ADMIN)
 trader = plat.users.register("trader_one", "Str0ng-Passw0rd!")

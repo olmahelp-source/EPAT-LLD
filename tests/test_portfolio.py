@@ -5,14 +5,14 @@ import numpy as np
 import pandas as pd
 
 import helpers  # noqa: F401
-from algoplatform.core import Fill, Instrument, Side
-from algoplatform.core.exceptions import OptimizationError, ValidationError
-from algoplatform.portfolio import (FixedFractional, FixedQuantity, FundAllocator, KellySizer, Portfolio,
+from algoplatform.foundation.core import Fill, Instrument, Side
+from algoplatform.foundation.core.exceptions import OptimizationError, ValidationError
+from algoplatform.capital.portfolio import (FixedFractional, FixedQuantity, FundAllocator, KellySizer, Portfolio,
                                     PositionSizeManager, RiskPerTrade, SizingContext, VolatilityTarget,
                                     apply_weight_bounds, black_litterman, drawdown_scalar, inverse_volatility,
                                     kelly_fraction, kelly_gaussian, max_sharpe, mean_variance, min_variance,
                                     optimal_f, project_capped_simplex, risk_contributions, risk_parity)
-from algoplatform.core.config import SizingConfig
+from algoplatform.foundation.core.config import SizingConfig
 
 _n = [0]
 

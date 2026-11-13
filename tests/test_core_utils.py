@@ -1,10 +1,10 @@
 import unittest
 
 import helpers  # noqa: F401  (sets sys.path)
-from algoplatform.core import (AuditLog, ConfigError, EventBus, Instrument, Order, PlatformConfig, Registry,
+from algoplatform.foundation.core import (AuditLog, ConfigError, EventBus, Instrument, Order, PlatformConfig, Registry,
                                Signal, ValidationError, Side, OrderType, Bar)
-from algoplatform.core.exceptions import BrokerConnectionError, OrderRejectedError, PlatformError
-from algoplatform.utils import CircuitBreaker, IdGenerator, RateLimiter, retry, safe_div, to_array, SimClock, TradingCalendar
+from algoplatform.foundation.core.exceptions import BrokerConnectionError, OrderRejectedError, PlatformError
+from algoplatform.foundation.utils import CircuitBreaker, IdGenerator, RateLimiter, retry, safe_div, to_array, SimClock, TradingCalendar
 from datetime import datetime, timezone
 
 
@@ -82,7 +82,7 @@ class InfraTests(unittest.TestCase):
 
     def test_empty_audit_log_is_truthy_so_it_is_shared_not_replaced(self):
         # regression: `audit or AuditLog()` used to discard an empty shared log
-        from algoplatform.orders import OrderManager
+        from algoplatform.trading.orders import OrderManager
         shared = AuditLog()
         self.assertTrue(bool(shared))
         self.assertIs(OrderManager(audit=shared).audit, shared)

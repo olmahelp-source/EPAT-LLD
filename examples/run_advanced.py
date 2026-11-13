@@ -9,25 +9,25 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import numpy as np
 import pandas as pd
 
-from algoplatform.analytics.tca import tca_summary
-from algoplatform.app.engine import TradingEngine
-from algoplatform.backtest import BacktestEngine
-from algoplatform.brokers import CostModel, PaperBroker
-from algoplatform.brokers.fix import FixGateway
-from algoplatform.brokers.fix.testing import FixAcceptor, LoopbackChannel
-from algoplatform.core import EventBus, PlatformConfig, Side
-from algoplatform.core.config import CostConfig
-from algoplatform.data import MarketData, synthetic
-from algoplatform.derivatives import binomial_price, iron_condor, profile, simulate_delta_hedge
-from algoplatform.fundamentals import dcf, reverse_dcf, terminal_sensitivity
-from algoplatform.optimize import Param, ParameterSpace, make_parallel_objective, random_search
-from algoplatform.orders import OrderManager
-from algoplatform.persistence import SqliteStore
-from algoplatform.research import (PurgedKFold, daily_vol, probability_of_backtest_overfitting, sample_weights,
+from algoplatform.validation.analytics.tca import tca_summary
+from algoplatform.application.app.engine import TradingEngine
+from algoplatform.validation.backtest import BacktestEngine
+from algoplatform.trading.brokers import CostModel, PaperBroker
+from algoplatform.trading.brokers.fix import FixGateway
+from algoplatform.trading.brokers.fix.testing import FixAcceptor, LoopbackChannel
+from algoplatform.foundation.core import EventBus, PlatformConfig, Side
+from algoplatform.foundation.core.config import CostConfig
+from algoplatform.market_data.data import MarketData, synthetic
+from algoplatform.quantitative.derivatives import binomial_price, iron_condor, profile, simulate_delta_hedge
+from algoplatform.signals.fundamentals import dcf, reverse_dcf, terminal_sensitivity
+from algoplatform.validation.optimize import Param, ParameterSpace, make_parallel_objective, random_search
+from algoplatform.trading.orders import OrderManager
+from algoplatform.operations.persistence import SqliteStore
+from algoplatform.learning.research import (PurgedKFold, daily_vol, probability_of_backtest_overfitting, sample_weights,
                                    triple_barrier)
-from algoplatform.sentiment import EntityMapper, NewsStore, SentimentSignal
-from algoplatform.strategy import MLStrategy, SMACrossover
-from algoplatform.utils import SimClock
+from algoplatform.signals.sentiment import EntityMapper, NewsStore, SentimentSignal
+from algoplatform.strategies.strategy import MLStrategy, SMACrossover
+from algoplatform.foundation.utils import SimClock
 
 
 def banner(t):

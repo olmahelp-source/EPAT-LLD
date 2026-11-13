@@ -7,11 +7,11 @@ from __future__ import annotations
 import argparse
 from typing import List, Optional
 
-from .app.cli import main
+from .application.app.cli import main
 
 
 def start_web(args: argparse.Namespace) -> int:
-    from .web.server import App, serve                       # imported only when the web UI is started
+    from .application.web.server import App, serve                       # imported only when the web UI is started
     serve(args.host, args.port, App(db_dir=args.db_dir))
     return 0
 

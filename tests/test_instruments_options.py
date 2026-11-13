@@ -8,12 +8,12 @@ import numpy as np
 import pandas as pd
 
 import helpers  # noqa: F401
-from algoplatform.core.exceptions import AggregateError, DataError, InstrumentError, MissingDataError, ValidationError
-from algoplatform.derivatives import OptionChain, iv_percentile, iv_rank, option_symbol, synthetic_chain
-from algoplatform.instruments import (AssetClass, ContractSpec, CorporateAction, InstrumentMaster, actions_from_records, adjust_ohlcv,
+from algoplatform.foundation.core.exceptions import AggregateError, DataError, InstrumentError, MissingDataError, ValidationError
+from algoplatform.quantitative.derivatives import OptionChain, iv_percentile, iv_rank, option_symbol, synthetic_chain
+from algoplatform.market_data.instruments import (AssetClass, ContractSpec, CorporateAction, InstrumentMaster, actions_from_records, adjust_ohlcv,
                                       adjustment_factors, continuous_series, dividend_cash, future_spec, future_symbol, option_spec,
                                       parse_option_symbol, roll_schedule, unadjusted_position)
-from algoplatform.quant import bs_price
+from algoplatform.quantitative.quant import bs_price
 
 
 def flat_frame(n, price=100.0, start="2024-01-01", volume=1000.0):

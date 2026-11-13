@@ -4,17 +4,17 @@ import unittest
 import numpy as np
 
 import helpers  # noqa: F401
-from algoplatform.ai import (FuzzySystem, FuzzyVariable, GaussianHMM, IsolationForest, RegimeDetector, SymbolicAlpha, bocpd,
+from algoplatform.learning.ai import (FuzzySystem, FuzzyVariable, GaussianHMM, IsolationForest, RegimeDetector, SymbolicAlpha, bocpd,
                              changepoints_from_run_length, cusum, evaluate_tree, gaussian, left_shoulder, mahalanobis, right_shoulder,
                              robust_zscore, rolling_robust_zscore, to_string, trapezoid, triangle)
-from algoplatform.core.exceptions import ModelError, ValidationError
-from algoplatform.dl import (LSTM, MLP, Activation, Adam, Autoencoder, Dense, Dropout, LSTMForecaster, Sequential, gradient_check,
+from algoplatform.foundation.core.exceptions import ModelError, ValidationError
+from algoplatform.learning.dl import (LSTM, MLP, Activation, Adam, Autoencoder, Dense, Dropout, LSTMForecaster, Sequential, gradient_check,
                              make_sequences)
-from algoplatform.ml import (KNN, PCA, DecisionTree, GaussianNB, GradientBoosting, KMeans, LassoModel, RandomForest, StackingEnsemble,
+from algoplatform.learning.ml import (KNN, PCA, DecisionTree, GaussianNB, GradientBoosting, KMeans, LassoModel, RandomForest, StackingEnsemble,
                              VotingEnsemble, confusion, directional_accuracy, forward_returns, information_coefficient,
                              precision_recall_f1, r2_score, roc_auc, signal_from_probability, walk_forward_predict)
-from algoplatform.research import LogisticModel
-from algoplatform.rl import (DQNAgent, EpsilonGreedyBandit, QLearningAgent, ReinforceAgent, ThompsonBandit, TradingEnv, UCB1Bandit,
+from algoplatform.learning.research import LogisticModel
+from algoplatform.learning.rl import (DQNAgent, EpsilonGreedyBandit, QLearningAgent, ReinforceAgent, ThompsonBandit, TradingEnv, UCB1Bandit,
                              as_policy, evaluate, standardize, train)
 
 

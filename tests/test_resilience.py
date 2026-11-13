@@ -6,11 +6,11 @@ import unittest
 import numpy as np
 
 import helpers  # noqa: F401
-from algoplatform.core.enums import Severity
-from algoplatform.core.exceptions import (AggregateError, BrokerConnectionError, CapacityError, ConfigError, KillSwitchActive,
+from algoplatform.foundation.core.enums import Severity
+from algoplatform.foundation.core.exceptions import (AggregateError, BrokerConnectionError, CapacityError, ConfigError, KillSwitchActive,
                                           MissingDataError, OperationTimeout, OrderRejectedError, PlatformError, RateLimitError,
                                           RiskLimitBreach, ValidationError)
-from algoplatform.utils import (Bulkhead, DeadLetterQueue, Deadline, ErrorAction, ErrorBoundary, ErrorBudget, ErrorCollector,
+from algoplatform.foundation.utils import (Bulkhead, DeadLetterQueue, Deadline, ErrorAction, ErrorBoundary, ErrorBudget, ErrorCollector,
                                 ErrorPolicy, Result, attempt, call_with_timeout, classify, error_context, first_success,
                                 logsumexp, nelder_mead, partition, rank, softmax, spearman, with_fallback)
 
