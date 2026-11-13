@@ -2,9 +2,9 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 import helpers
-from algoplatform.core import Permission, Role
-from algoplatform.core.exceptions import (AuthenticationError, AuthorizationError, UserError, ValidationError)
-from algoplatform.users import (BrokerAccountManager, CredentialVault, PasswordHasher, SecretStr, TokenService,
+from algoplatform.foundation.core import Permission, Role
+from algoplatform.foundation.core.exceptions import (AuthenticationError, AuthorizationError, UserError, ValidationError)
+from algoplatform.access.users import (BrokerAccountManager, CredentialVault, PasswordHasher, SecretStr, TokenService,
                                 UserManager)
 
 

@@ -5,8 +5,8 @@ import urllib.error
 import urllib.request
 
 import helpers  # noqa: F401
-from algoplatform.core import PlatformConfig
-from algoplatform.web.server import App, create_server
+from algoplatform.foundation.core import PlatformConfig
+from algoplatform.application.web.server import App, create_server
 
 PW = "Correct-Horse-9"
 
@@ -51,7 +51,9 @@ class WebApiTests(unittest.TestCase):
         self.assertIn("<div id=\"root\">", html)
         self.assertIn("default-src 'self'", hdr["Content-Security-Policy"])
         self.assertEqual(hdr["X-Content-Type-Options"], "nosniff")
-        self.assertEqual(self.call("GET", "/app.js")[0], 200)
+        self.assertEqual(self.call("GET", "/js/core.js")[0], 200)
+        self.assertEqual(self.call("GET", "/js/pages/trading.js")[0], 200)
+        self.assertEqual(self.call("GET", "/js/../../server.py")[0], 404)
         self.assertEqual(self.call("GET", "/../server.py")[0], 404)               # path traversal blocked
         self.assertEqual(self.call("GET", "/%2e%2e/server.py")[0], 404)
 
@@ -146,6 +148,7 @@ class WebPersistenceTests(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             app1 = App(PlatformConfig(log_level="CRITICAL"), fast_hash=True, db_dir=d)
+            self.addCleanup(app1.close)
             code, body = app1.dispatch("POST", "/api/register", {"username": "persist_admin", "password": PW}, None)
             self.assertEqual(code, 200)
             tok = app1.dispatch("POST", "/api/login", {"username": "persist_admin", "password": PW}, None)[1]["token"]
@@ -160,6 +163,7 @@ class WebPersistenceTests(unittest.TestCase):
             self.assertEqual(before["portfolio"]["positions"]["AAA"]["qty"], 10)
             # --- restart: a brand-new App on the same directory (old tokens are not honoured, users are) ---
             app2 = App(PlatformConfig(log_level="CRITICAL"), fast_hash=True, db_dir=d)
+            self.addCleanup(app2.close)
             self.assertEqual(app2.dispatch("GET", "/api/me", {}, tok)[0], 401)
             tok2 = app2.dispatch("POST", "/api/login", {"username": "persist_admin", "password": PW}, None)[1]["token"]
             code, after = app2.dispatch("GET", "/api/session", {}, tok2)
@@ -175,6 +179,7 @@ class WebPersistenceTests(unittest.TestCase):
             # a deliberate close deletes the saved session so it cannot resurrect
             self.assertEqual(app2.dispatch("POST", "/api/session/close", {}, tok2)[1], {"open": False})
             app3 = App(PlatformConfig(log_level="CRITICAL"), fast_hash=True, db_dir=d)
+            self.addCleanup(app3.close)
             tok3 = app3.dispatch("POST", "/api/login", {"username": "persist_admin", "password": PW}, None)[1]["token"]
             self.assertFalse(app3.dispatch("GET", "/api/session", {}, tok3)[1]["open"])
             for a in (app1, app2, app3):

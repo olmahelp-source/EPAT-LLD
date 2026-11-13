@@ -10,10 +10,10 @@ import numpy as np
 import pandas as pd
 
 from helpers import free_config, market_from_closes
-from algoplatform.core.exceptions import OptimizationError
-from algoplatform.optimize import (Param, ParameterSpace, ParallelBacktestObjective, genetic_search, grid_search,
+from algoplatform.foundation.core.exceptions import OptimizationError
+from algoplatform.validation.optimize import (Param, ParameterSpace, ParallelBacktestObjective, genetic_search, grid_search,
                                    make_parallel_objective, random_search)
-from algoplatform.strategy import StrategyBuilder
+from algoplatform.strategies.strategy import StrategyBuilder
 
 
 def quad(p):

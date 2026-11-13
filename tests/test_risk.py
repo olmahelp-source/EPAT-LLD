@@ -4,13 +4,13 @@ from datetime import datetime, timedelta
 import numpy as np
 
 import helpers
-from algoplatform.core import EventBus, KillSwitchState, Order, Role, Side, OrderType, RiskAction
-from algoplatform.core.config import RiskConfig
-from algoplatform.core.exceptions import (AuthorizationError, KillSwitchActive, RiskError, RiskLimitBreach)
-from algoplatform.risk import (KillSwitch, RiskContext, RiskManager, cornish_fisher_var, expected_shortfall,
+from algoplatform.foundation.core import EventBus, KillSwitchState, Order, Role, Side, OrderType, RiskAction
+from algoplatform.foundation.core.config import RiskConfig
+from algoplatform.foundation.core.exceptions import (AuthorizationError, KillSwitchActive, RiskError, RiskLimitBreach)
+from algoplatform.capital.risk import (KillSwitch, RiskContext, RiskManager, cornish_fisher_var, expected_shortfall,
                                historical_var, kupiec_pof, monte_carlo_var, parametric_var, portfolio_var,
                                reverse_stress_loss, stress_test)
-from algoplatform.utils import SimClock
+from algoplatform.foundation.utils import SimClock
 
 T0 = datetime(2024, 1, 2, 12, 0)
 
@@ -81,7 +81,7 @@ class PreTradeTests(unittest.TestCase):
         self.assertEqual(res, [True, True, True, False, False])
 
     def test_broken_check_fails_closed(self):
-        from algoplatform.risk import Check
+        from algoplatform.capital.risk import Check
 
         class Boom(Check):
             name = "boom"

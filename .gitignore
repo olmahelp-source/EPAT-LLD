@@ -1,11 +1,20 @@
+# Python and tool caches (regenerated on demand)
 __pycache__/
 *.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+# environments and builds
 .venv/
 build/
 dist/
 *.egg-info/
-.ruff_cache/
+node_modules/
+# generated output and runtime state
 examples/demo_report.html
+*.log
 *.db
 *.db-wal
 *.db-shm

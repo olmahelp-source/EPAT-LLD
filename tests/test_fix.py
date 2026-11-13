@@ -4,14 +4,14 @@ import time
 import unittest
 
 import helpers  # noqa: F401
-from algoplatform.brokers import create_gateway
-from algoplatform.brokers.fix import FileSeqStore, FixGateway, FixParser, FixProtocolError, FixSession, build, decode, encode
-from algoplatform.brokers.fix.message import (EXEC_REPORT, HEARTBEAT, SOH, T_TEXT, checksum, utc_timestamp)
-from algoplatform.brokers.fix.session import ACTIVE, DISCONNECTED
-from algoplatform.brokers.fix.testing import FixAcceptor, LoopbackChannel, TcpAcceptorServer
-from algoplatform.core import EventBus, OrderStatus, OrderType, Side
-from algoplatform.core.exceptions import BrokerConnectionError, ConfigError, OrderRejectedError
-from algoplatform.orders import OrderManager
+from algoplatform.trading.brokers import create_gateway
+from algoplatform.trading.brokers.fix import FileSeqStore, FixGateway, FixParser, FixProtocolError, FixSession, build, decode, encode
+from algoplatform.trading.brokers.fix.message import (EXEC_REPORT, HEARTBEAT, SOH, T_TEXT, checksum, utc_timestamp)
+from algoplatform.trading.brokers.fix.session import ACTIVE, DISCONNECTED
+from algoplatform.trading.brokers.fix.testing import FixAcceptor, LoopbackChannel, TcpAcceptorServer
+from algoplatform.foundation.core import EventBus, OrderStatus, OrderType, Side
+from algoplatform.foundation.core.exceptions import BrokerConnectionError, ConfigError, OrderRejectedError
+from algoplatform.trading.orders import OrderManager
 
 S = OrderStatus
 

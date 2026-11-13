@@ -4,22 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "algoplatform"
-version = "0.1.0"
-description = "Modular algorithmic trading platform: brokers, OMS, risk, strategies, backtesting, optimisation, analytics"
+version = "0.2.0"
+description = "Modular algorithmic trading platform: brokers, OMS, risk, strategies, quant research, learning, backtesting, optimisation, analytics, governance"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "pandas>=2.0"]
 
 [project.optional-dependencies]
 security = ["cryptography>=42"]
+llm = ["anthropic"]                 # only for sentiment.anthropic_completer; nothing else imports it
+ib = ["ib_async"]                   # only for data.IBClient (Interactive Brokers history through TWS / IB Gateway)
 
 [project.scripts]
-algoplatform = "algoplatform.app.cli:main"
+algoplatform = "algoplatform.__main__:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"algoplatform.web" = ["static/*"]
+"algoplatform.application.web" = ["static/*", "static/js/*.js", "static/js/pages/*.js"]
 
 [tool.ruff]
 target-version = "py310"

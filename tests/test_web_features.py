@@ -9,9 +9,9 @@ import urllib.request
 import pandas as pd
 
 import helpers  # noqa: F401
-from algoplatform.core import PlatformConfig
-from algoplatform.data import synthetic
-from algoplatform.web.server import App, create_server
+from algoplatform.foundation.core import PlatformConfig
+from algoplatform.market_data.data import synthetic
+from algoplatform.application.web.server import App, create_server
 
 PW = "Correct-Horse-9"
 
