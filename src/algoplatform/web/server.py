@@ -36,6 +36,7 @@ from ..core.logging import get_logger
 from ..core.models import Bar
 from ..data import MarketData, synthetic
 from ..data.cleaning import validate_ohlcv
+from ..data.providers import check_symbol
 from ..portfolio.allocation import FundAllocator
 from ..risk.measures import (HISTORICAL_SCENARIOS, expected_shortfall, historical_var, parametric_var,
                              reverse_stress_loss, stress_test)
@@ -45,7 +46,7 @@ from .. import fundamentals as _fundamentals, sentiment as _sentiment  # noqa: F
 from ..strategy.base import STRATEGIES
 from ..utils.timeutils import SimClock
 from ..users.manager import User, UserManager
-from . import desk_api, quant_api, research_api
+from . import data_api, desk_api, quant_api, research_api
 from .quant_api import session_metrics
 
 log = get_logger(__name__)
@@ -104,15 +105,31 @@ def series_points(s: pd.Series, max_points: int = 400) -> List[list]:
 
 
 class LiveSession:
-    """A paper-trading engine fed by a synthetic random-walk price stream."""
+    """A paper-trading engine fed bar by bar: by a sample random walk (``feed="sample"``), or by replaying downloaded
+    daily history (``feed="history"``, the frames in ``replay``), so a strategy can be paper-traded on real prices."""
 
     def __init__(self, engine, symbols: List[str], seed: int, strategy: Optional[str] = None,
-                 params: Optional[Dict[str, Any]] = None, store: Optional[SqliteStore] = None) -> None:
+                 params: Optional[Dict[str, Any]] = None, store: Optional[SqliteStore] = None, feed: str = "sample",
+                 replay: Optional[Dict[str, pd.DataFrame]] = None, pos: int = 0) -> None:
         self.engine, self.symbols, self.seed = engine, symbols, seed
         self.strategy, self.params, self.store = strategy, params or {}, store
         self.rng = np.random.default_rng(seed)
         self.last = {s: float(self.rng.uniform(50, 300)) for s in symbols}
         self.next_ts = pd.Timestamp("2024-01-01")
+        self.feed, self.pos = feed, int(pos)
+        self.replay: Optional[Dict[str, pd.DataFrame]] = None
+        self.replay_index: Optional[pd.DatetimeIndex] = None
+        if feed == "history" and replay:
+            common = None
+            for f in replay.values():
+                common = f.index if common is None else common.intersection(f.index)
+            if common is None or len(common) < 2:
+                raise ValidationError("the downloaded histories of these symbols share fewer than 2 dates")
+            self.replay_index = common.sort_values()
+            self.replay = {s: replay[s].loc[self.replay_index] for s in symbols}
+            if self.pos < len(self.replay_index):
+                self.next_ts = self.replay_index[self.pos]
+                self.last = {s: float(self.replay[s]["open"].iloc[self.pos]) for s in symbols}
         self.lock = threading.RLock()
         self.history: Dict[str, List[float]] = {s: [] for s in symbols}
         self.cond = threading.Condition()
@@ -130,21 +147,56 @@ class LiveSession:
         if self.store is not None:
             self.store.put("session", {"symbols": self.symbols, "seed": self.seed, "strategy": self.strategy,
                                        "params": self.params, "last": self.last, "history": self.history,
-                                       "next_ts": self.next_ts.isoformat(), "bars": self.engine.bars_processed})
+                                       "next_ts": self.next_ts.isoformat(), "bars": self.engine.bars_processed,
+                                       "feed": self.feed, "pos": self.pos})
+
+    def replay_status(self) -> Optional[Dict[str, Any]]:
+        if self.feed != "history":
+            return None
+        idx = self.replay_index
+        if idx is None or not len(idx):
+            return {"pos": self.pos, "total": None, "available": False, "from": None, "to": None}
+        return {"pos": self.pos, "total": len(idx), "available": self.replay is not None,
+                "from": idx[0].date().isoformat(), "to": idx[-1].date().isoformat()}
+
+    def _next_bars(self) -> Dict[str, Bar]:
+        if self.feed == "history":
+            if self.replay is None or self.replay_index is None:
+                raise ValidationError("the downloaded history for this session is not available any more (removed from the library, "
+                                      "or the platform is in sample-data-only mode): close the session")
+            if self.pos >= len(self.replay_index):
+                raise ValidationError(f"all {len(self.replay_index)} bars of downloaded history have been replayed: close the session "
+                                      "or download a longer range")
+            ts = self.replay_index[self.pos]
+            bars = {}
+            for s in self.symbols:
+                row = self.replay[s].iloc[self.pos]
+                bars[s] = Bar(ts, s, float(row["open"]), float(row["high"]), float(row["low"]), float(row["close"]), float(row["volume"]))
+            self.pos += 1
+            self.next_ts = self.replay_index[self.pos] if self.pos < len(self.replay_index) else ts + pd.offsets.BDay(1)
+            return bars
+        bars = {}
+        for s in self.symbols:
+            o = self.last[s]
+            c = o * float(np.exp(self.rng.normal(0.0003, 0.012)))
+            bars[s] = Bar(self.next_ts, s, o, max(o, c) * 1.003, min(o, c) * 0.997, c, 1e6)
+        self.next_ts = self.next_ts + pd.offsets.BDay(1)
+        return bars
 
     def step(self, n: int) -> None:
         with self.lock:
-            for _ in range(n):
-                bars = {}
-                for s in self.symbols:
-                    o = self.last[s]
-                    c = o * float(np.exp(self.rng.normal(0.0003, 0.012)))
-                    bars[s] = Bar(self.next_ts, s, o, max(o, c) * 1.003, min(o, c) * 0.997, c, 1e6)
-                    self.last[s] = c
-                    self.history[s].append(round(c, 4))
+            for i in range(n):
+                try:
+                    bars = self._next_bars()
+                except ValidationError:
+                    if i == 0:
+                        raise
+                    break                                              # history ran out part-way: keep the bars already played
+                for s, b in bars.items():
+                    self.last[s] = b.close
+                    self.history[s].append(round(b.close, 4))
                     self.history[s] = self.history[s][-200:]
                 self.engine.on_bars(bars)
-                self.next_ts = self.next_ts + pd.offsets.BDay(1)
                 if self.on_step is not None:
                     try:
                         self.on_step(self)
@@ -180,6 +232,7 @@ class App:
         quant_api.register(self)
         research_api.register(self)
         desk_api.register(self)
+        data_api.register(self)
 
     def _watch(self, sess: "LiveSession") -> "LiveSession":
         """Evaluate the platform's alert rules against this session after every simulated bar."""
@@ -252,7 +305,14 @@ class App:
                 orders[f.client_order_id].fills.append(f)
         live = [o for o in orders.values() if o.status in (OrderStatus.ACKNOWLEDGED, OrderStatus.PARTIALLY_FILLED)]
         engine.broker.restore(fills, live, meta.get("last"))
-        sess = self._watch(LiveSession(engine, meta["symbols"], meta["seed"], meta.get("strategy"), meta.get("params"), store))
+        feed, replay = meta.get("feed", "sample"), None
+        if feed == "history" and not P.data.sample_only:
+            try:
+                replay = {s_: P.data.library.get(s_, "1Day") for s_ in meta["symbols"]}
+            except PlatformError:
+                replay = None                                       # removed since: the session comes back, stepping explains why it cannot
+        sess = self._watch(LiveSession(engine, meta["symbols"], meta["seed"], meta.get("strategy"), meta.get("params"), store,
+                                       feed=feed, replay=replay, pos=int(meta.get("pos", 0))))
         sess.last, sess.history = {k: float(v) for k, v in meta["last"].items()}, meta["history"]
         sess.next_ts = pd.Timestamp(meta["next_ts"])
         clock.set((sess.next_ts - pd.offsets.BDay(1)).to_pydatetime())      # simulated time resumes at the last bar
@@ -267,8 +327,25 @@ class App:
 
     # ---- helpers --------------------------------------------------------------------------
     def _data(self, body: Dict[str, Any], user: Optional[User] = None) -> Tuple[MarketData, List[str]]:
-        """Synthetic universe, or the user's uploaded CSVs when ``dataset == "uploaded"``."""
-        if body.get("dataset") == "uploaded":
+        """The data a research request runs on, chosen by ``source``:
+
+        * ``"sample"`` (the default): generated data; ``scenario`` picks a market scenario, otherwise a mixed universe;
+        * ``"history"``: daily bars downloaded from a data provider into the shared library;
+        * ``"uploaded"`` (or the older ``dataset="uploaded"``): the user's own CSV files.
+
+        In sample-data-only mode the last two are refused."""
+        source = str(body.get("source") or ("uploaded" if body.get("dataset") == "uploaded" else "sample"))
+        if source not in ("sample", "history", "uploaded"):
+            raise ValidationError("source must be sample, history or uploaded")
+        if source == "history":
+            wanted = body.get("symbols") or self.platform.data.library.symbols("1Day")[:10]
+            symbols = list(dict.fromkeys(check_symbol(s_) for s_ in wanted if str(s_).strip()))
+            if not 1 <= len(symbols) <= 10:
+                raise ValidationError("downloaded history: choose 1-10 symbols (download them on the Price data page first)")
+            md = self.platform.data.history(symbols, "1Day", min_rows=int(body.get("min_rows", 150)))
+            return md, symbols
+        if source == "uploaded":
+            self.platform.data.require_real_data_allowed("using uploaded files")
             frames = self.datasets.get(user.user_id, {}) if user else {}
             if not frames:
                 raise ValidationError("no uploaded data: upload at least one CSV on the Price data page")
@@ -289,7 +366,10 @@ class App:
         if not 150 <= bars <= 3000:
             raise ValidationError("bars must be between 150 and 3000")
         md = MarketData()
-        for s_, df in synthetic.universe(symbols, n=bars, seed=int(body.get("seed", 7))).items():
+        scenario = body.get("scenario")
+        frames = (self.platform.data.sample(str(scenario), symbols, bars=bars, seed=int(body.get("seed", 7))) if scenario
+                  else synthetic.universe(symbols, n=bars, seed=int(body.get("seed", 7))))
+        for s_, df in frames.items():
             md.add(s_, df)
         return md, symbols
 
@@ -503,9 +583,16 @@ class App:
         # ---- live (paper) session -----------------------------------------------------------
         @r("POST", "/api/session/open")
         def open_session(u, b):
-            symbols = [s.strip().upper() for s in b.get("symbols", ["AAA", "BBB"]) if s.strip()]
-            if not 1 <= len(symbols) <= 6 or not all(s.isalnum() and len(s) <= 8 for s in symbols):
-                raise ValidationError("symbols: 1-6 alphanumeric tickers")
+            feed = str(b.get("feed") or "sample")
+            if feed not in ("sample", "history"):
+                raise ValidationError("feed must be sample or history")
+            symbols = [check_symbol(s) for s in b.get("symbols", ["AAA", "BBB"]) if str(s).strip()]
+            if not 1 <= len(symbols) <= 6 or (feed == "sample" and not all(s.isalnum() and len(s) <= 8 for s in symbols)):
+                raise ValidationError("symbols: 1-6 tickers (letters and digits for sample data)")
+            replay = None
+            if feed == "history":
+                md = P.data.history(symbols, "1Day", min_rows=30)
+                replay = {s: md.frame(s) for s in symbols}
             with self.lock:
                 if u.user_id in self.sessions:
                     raise ValidationError("a session is already open; close it first")
@@ -521,7 +608,7 @@ class App:
                 engine = P.open_session(u, acc.account_id, strategies, clock=SimClock(), store=store)
                 engine.start()
                 sess = self._watch(LiveSession(engine, symbols, int(b.get("seed", 1)), b.get("strategy") or None,
-                                               b.get("params") or {}, store))
+                                               b.get("params") or {}, store, feed=feed, replay=replay))
                 sess.step(1)
                 self.sessions[u.user_id] = sess
             return self._snapshot(sess)
@@ -542,6 +629,8 @@ class App:
             n = int(b.get("n", 1))
             if not 1 <= n <= 100:
                 raise ValidationError("n must be 1-100")
+            if s.feed == "history":
+                P.data.require_real_data_allowed("replaying downloaded history")
             s.step(n)
             return self._snapshot(s)
 
@@ -665,7 +754,7 @@ class App:
             snap = e.portfolio.snapshot()
             ks = e.risk.kill_switch
             return {"open": True, "resumed": getattr(s, "recovery", None) is not None, "recovery": getattr(s, "recovery", None),
-                    "symbols": s.symbols, "prices": s.last, "history": s.history,
+                    "symbols": s.symbols, "prices": s.last, "history": s.history, "feed": s.feed, "replay": s.replay_status(),
                     "portfolio": snap, "bars": e.bars_processed,
                     "equity_curve": series_points(e.portfolio.equity_curve().tail(300)) if e.bars_processed else [],
                     "orders": [self._order(o) for o in reversed(e.oms.all_orders()[-60:])],

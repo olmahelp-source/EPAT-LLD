@@ -96,6 +96,7 @@ class FetchAndLockTests(PlatformCase):
         r = research.fetch_history("alpaca", ["aapl", "ZZZZ", "aapl"], "2023-01-01", "2023-12-31")
         self.assertEqual(sorted(r["stored"]), ["AAPL"])                           # duplicates collapsed, bad symbol reported
         self.assertIn("invalid symbol", r["errors"]["ZZZZ"])
+        self.assertTrue(self.p.data.describe("alpaca")["status"]["ok"])           # one unknown ticker is not a provider failure
         md = self.p.data.history(["AAPL"])
         self.assertEqual(len(md.frame("AAPL")), 200)
         self.assertEqual(self.p.data.library.summary()[0]["provider"], "alpaca")
@@ -108,6 +109,8 @@ class FetchAndLockTests(PlatformCase):
             research.fetch_history("ib", ["AAPL"])                                  # not connected
         with self.assertRaises(ValidationError):
             research.fetch_history("alpaca", [f"S{i}" for i in range(21)])
+        research.fetch_history("alpaca", ["ZZZZ"])                                  # nothing loaded at all: that is a failure
+        self.assertFalse(self.p.data.describe("alpaca")["status"]["ok"])
         self.assertTrue(research.remove_history("AAPL"))
         with self.assertRaises(MissingDataError):
             self.p.data.history(["AAPL"])

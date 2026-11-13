@@ -5,7 +5,7 @@ One codebase for **research -> backtest -> paper -> live**. The same `TradingEng
 Pure Python 3.10+ with `numpy` and `pandas`. No scipy: the statistical functions are implemented in `stats/special.py`.
 
 ```
-pip install -e .                    # from this folder (optional: pip install -e ".[security]" for encrypted credentials)
+pip install -e .                    # from this folder (optional: ".[security]" for encrypted credentials, ".[ib]" for Interactive Brokers data)
 python examples/run_demo.py         # core tour, ~15 s
 python examples/run_advanced.py     # algos, FIX, recovery, research, valuation, sentiment, options, parallel search (~5 s)
 python examples/run_quant_lab.py    # patterns, formulas, selection, volatility, ML / DL / RL, roles, governance, alerts (~10 s)
@@ -13,7 +13,7 @@ python -m algoplatform backtest --strategy zscore_reversion --html report.html
 python -m algoplatform optimize --strategy sma_crossover --method bayesian     # also: grid random genetic tpe pso de annealing cmaes
 python -m algoplatform structure    # the job groups, their packages and roles; --check verifies the dependency rules
 python -m algoplatform functions    # every indicator, pattern and operator usable in a formula
-cd tests && python -m unittest discover -p "test_*.py"     # 770+ tests (CI runs Python 3.10-3.13)
+cd tests && python -m unittest discover -p "test_*.py"     # 800+ tests (CI runs Python 3.10-3.13)
 ```
 
 Further reading: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (structure by job, dependency rules, roles and desks) and
@@ -32,7 +32,7 @@ answers:
 | Job group | Pages |
 |---|---|
 | Access control | **Users and roles**: change a user's role. |
-| Market and reference data | **Price data**: upload OHLCV CSVs (validated, capped, private to you). **Instruments**: the instrument master; operations loads contract specs (tick, lot, multiplier, expiry, broker symbols) from CSV. |
+| Market and reference data | **Price data**: the sample-data generator (eight market scenarios, with a preview), downloading history from a connected provider into the shared history library, and uploading your own OHLCV CSVs. **Data providers** (operations): connect Alpaca or Interactive Brokers, test the connection, and switch the sample-data-only lock. **Instruments**: the instrument master; operations loads contract specs (tick, lot, multiplier, expiry, broker symbols) from CSV. |
 | Signal libraries | **Technical lab**: run a formula over the whole history (any catalogue function), chart patterns, candlesticks, support and resistance, function reference. **News sentiment**: score headlines (word list with negation plus event rules) and group them by instrument. |
 | Quantitative research | **Volatility**: five estimators, a volatility cone, an out-of-sample model league, the exposure multiplier for a target. **Option chain**: implied volatility and Greeks, smile, skew, term structure, expected move, open-interest walls, dealer gamma, quote checks (synthetic chain). |
 | Learning and AI | **Prediction models**: walk-forward prediction with seven models (logistic to neural network), hit rate, AUC, information coefficient, and the predictions traded. **Regimes and change points**: hidden Markov regimes, Bayesian change points, anomalous days. |
@@ -49,10 +49,25 @@ server checks the same permission on every request, and a test fails if the menu
 Pages have their own addresses (`#/margin`, `#/options`, ...), so the back button and bookmarks work; a page a role
 cannot open falls back to Home.
 
+**Sample or real data.** The **Sample | Real** switch in the header decides what every data form starts on: generated
+sample data (pick a scenario: random walk, bull, bear, sideways, high volatility, regime switching, crash and recovery,
+cointegrated pairs), or real data (history downloaded from a provider, or your uploads). Each form can still be changed
+on its own. Paper trading can replay downloaded daily history bar by bar instead of a random walk. Operations can lock
+the whole platform to sample data (training, demos, a fresh install); the server then refuses downloads, downloaded
+history, uploads and history replay, whatever the browser asks for.
+
+**Connecting a data provider.** On the Data providers page (operations), or before starting the server:
+```
+export ALPACA_API_KEY_ID=...  ALPACA_API_SECRET_KEY=...   # or APCA_API_KEY_ID / APCA_API_SECRET_KEY; ALPACA_DATA_FEED=iex|sip
+export IB_HOST=127.0.0.1  IB_PORT=7497  IB_CLIENT_ID=17     # TWS or IB Gateway with the API enabled; pip install ib_async
+```
+Keys entered on the page stay in the server's credential vault (encrypted with the `security` extra), are never shown
+again or written to disk, and must be entered again after a restart; keys from the environment come back by themselves.
+
 - The first account created becomes the administrator; later sign-ups are traders. Raise roles on the Users and roles page (a Risk Manager or Admin is needed to reset a tripped kill switch).
 - Every call goes through `TradingPlatform`, so permissions are enforced server-side, not just hidden in the UI. Server text is rendered with `textContent` only, responses carry CSP and no-sniff headers, and the stream authenticates with a header (never a URL token).
 - **Localhost only.** There is no TLS. Do not expose it to a network without a TLS reverse proxy and your own auth in front. Uploaded data lives in server memory.
-- API: see `web/server.py` (`/api/backtest|optimize|walkforward|portfolio|data/*|session/*|audit|users/*`), `web/quant_api.py` (`/api/lab/technical|volatility|select`, `governance/*`, `inbox/*`, `alerts/*`, `structure`, `functions`), `web/research_api.py` (`/api/lab/option_chain|sentiment|models|regimes`) and `web/desk_api.py` (`/api/instruments*`, `/api/risk/margin|currency`, `/api/trading/orderbook`, `/api/ops/*`).
+- API: see `web/server.py` (`/api/backtest|optimize|walkforward|portfolio|data/*|session/*|audit|users/*`), `web/quant_api.py` (`/api/lab/technical|volatility|select`, `governance/*`, `inbox/*`, `alerts/*`, `structure`, `functions`), `web/research_api.py` (`/api/lab/option_chain|sentiment|models|regimes`), `web/desk_api.py` (`/api/instruments*`, `/api/risk/margin|currency`, `/api/trading/orderbook`, `/api/ops/*`) and `web/data_api.py` (`/api/data/sources|providers*|sample/preview|fetch|history/*|sample_only`). Every research route takes `source` = `sample` (with an optional `scenario`), `history` or `uploaded`.
 
 ## Architecture
 
@@ -287,6 +302,8 @@ engine = plat.open_session(trader, acc.account_id, [(SMACrossover(["AAA"]), 1.0)
 ## Honest limits
 
 - **Simulated fills are bar-based** (open/limit/stop touch, volume participation, square-root impact scaled by recent volatility). The trading engine and backtester run on bars. `brokers.OrderBook` and `MarketSimulator` add a real matching engine with queue position and latency for execution research, but the background order flow is random ("zero intelligence"), so it shows mechanics, not real market behaviour, and the engine does not yet run tick by tick.
+- **Data providers are verified only against fakes.** `AlpacaDataProvider` follows Alpaca's market-data API (stock and crypto bars, page tokens, rate limits) and is tested against a scripted fake transport; Alpaca's data server was reachable from the build environment, but no call was made with real keys. `IBDataProvider` is tested against a fake client; the thin `IBClient` that talks to TWS / IB Gateway through `ib_async` has not been run against a real gateway. Check both with your own account before relying on the data. IB pacing allows about 60 history requests per ten minutes, so long intraday ranges are refused up front rather than throttled.
+- **Sample data is generated.** The scenarios are designed to look like their names (a bull trend rises, a crash falls about 30%), which makes them good for learning and for testing a strategy's mechanics, and useless as evidence that a strategy works.
 - **Broker connectivity is verified only against fakes.** The Alpaca, Zerodha and Binance adapters follow the brokers' public API shapes and are tested against a scripted fake transport; the FIX gateway against an in-memory exchange and a localhost socket. None has been run against a live or sandbox broker. FIX is a working order-entry subset, not a certified implementation. Zerodha has no sandbox, so the adapter refuses `paper=True`. Test each adapter in the broker's sandbox, with tiny size, before anything else.
 - **Credentials** are encrypted at rest only if the optional `cryptography` package is installed; otherwise they live in memory only and are never logged.
 - **Persistence** is a single-process SQLite file: no replication or failover. The simulated paper broker is rebuilt from the journal; a real broker keeps its own state, which recovery reconciles against.

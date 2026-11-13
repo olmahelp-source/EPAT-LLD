@@ -182,7 +182,8 @@ class MarketDataService:
                 stored[sym] = self.library.put(sym, tf, frame, name, result.cleaning.get(sym)).summary()
             except PlatformError as exc:                       # e.g. the library is full: report it for this symbol, keep going
                 result.errors[sym] = exc.message
-        self._status[name] = {"ok": not result.errors, "last_fetch": pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"),
+        # the provider worked if anything loaded: one unknown ticker is the symbol's problem, not the connection's
+        self._status[name] = {"ok": bool(stored) or not result.errors, "last_fetch": pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"),
                               "loaded": len(stored), "failed": len(result.errors)}
         self.audit.record(user.username, "data.fetch", provider=name, timeframe=tf, loaded=sorted(stored), failed=sorted(result.errors))
         return {"provider": name, "timeframe": tf, "stored": stored, "errors": result.errors, "cleaning": result.cleaning}

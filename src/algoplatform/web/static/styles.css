@@ -128,3 +128,17 @@ a.btn { text-decoration: none; display: inline-block; }
 label.check { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
 .card.full .scroll { max-height: none; }
 .cell-text.narrow { min-width: 120px; }
+
+/* data switch in the header, source hint on data forms, provider badges */
+.seg { display: inline-flex; align-items: center; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 13px; }
+.seg .seg-label { padding: 5px 8px; color: var(--muted); border-right: 1px solid var(--line); }
+.seg button { background: transparent; border: 0; padding: 5px 10px; font: inherit; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); font-weight: 600; }
+.seg button:disabled { cursor: not-allowed; opacity: .45; }
+.seg .badge { margin: 0 6px; }
+.badge.lock { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
+.badge.ok { color: var(--good); border-color: color-mix(in srgb, var(--good) 50%, var(--line)); }
+.banner.info { border-color: color-mix(in srgb, var(--warn) 60%, var(--line)); background: color-mix(in srgb, var(--warn) 8%, var(--panel)); }
+.src-hint { flex-basis: 100%; color: var(--muted); font-size: 12px; margin-top: -4px; }
+.src-hint:empty { display: none; }
+@media (max-width: 900px) { .seg .seg-label { display: none; } }

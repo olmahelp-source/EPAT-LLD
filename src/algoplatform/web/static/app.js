@@ -27,7 +27,7 @@ function s(tag, attrs) {
 }
 
 // ---------- state & API ----------
-const store = { token: null, me: null, structure: null };
+const store = { token: null, me: null, structure: null, sources: null };
 try { store.token = sessionStorage.getItem("token"); } catch (_) { /* private mode */ }
 let toastTimer = null;
 
@@ -154,7 +154,7 @@ function renderLogin() {
 }
 
 function logout(silent) {
-  store.token = null; store.me = null; store.structure = null;
+  store.token = null; store.me = null; store.structure = null; store.sources = null;
   try { sessionStorage.removeItem("token"); } catch (_) { /* ignore */ }
   stopAuto();
   if (!silent) toast("Signed out");
@@ -168,6 +168,7 @@ const PAGES = [
   { id: "home", group: "application", label: "Home", build: homeView },
   { id: "data", group: "market_data", label: "Price data", build: dataView, perm: ["backtest:run"] },
   { id: "instruments", group: "market_data", label: "Instruments", build: instrumentsView, perm: ["portfolio:view"] },
+  { id: "providers", group: "market_data", label: "Data providers", build: providersView, perm: ["system:operate"] },
   { id: "lab", group: "signals", label: "Technical lab", build: labView, perm: ["backtest:run"] },
   { id: "sentiment", group: "signals", label: "News sentiment", build: sentimentView, perm: ["backtest:run"] },
   { id: "vol", group: "quant", label: "Volatility", build: volView, perm: ["backtest:run"] },
@@ -222,14 +223,31 @@ function renderApp() {
   const head = h("div", { class: "pagehead" }), content = h("div", { class: "page" });
   const frame = h("div", { class: "shell" }, nav, h("main", { class: "main" }, head, content));
   const menu = h("button", { class: "btn ghost menu", type: "button", "aria-controls": "sidenav", "aria-expanded": "false" }, "Menu");
+  const dataSwitch = h("div", { class: "seg", role: "group", "aria-label": "data the pages start on" }, ...dataSwitchParts());
   menu.addEventListener("click", () => { const open = !frame.classList.contains("nav-open"); frame.classList.toggle("nav-open", open); menu.setAttribute("aria-expanded", String(open)); });
-  Object.assign(shell, { frame, pages, groups, links, head, content, menu });
+  Object.assign(shell, { frame, pages, groups, links, head, content, menu, dataSwitch });
   mount(h("div", null,
-    h("header", { class: "top" }, h("div", { class: "bar" }, menu, h("a", { class: "brand", href: "#/home" }, "Algo Platform"), h("span", { class: "spacer" }),
+    h("header", { class: "top" }, h("div", { class: "bar" }, menu, h("a", { class: "brand", href: "#/home" }, "Algo Platform"), h("span", { class: "spacer" }), dataSwitch,
       h("span", { class: "who" }, store.me.username + " · " + store.me.role),
       h("button", { class: "btn ghost", onclick: () => logout(false) }, "Sign out"))),
     frame));
   showPage();
+}
+
+/* The header switch: "Sample" or "Real" data for every data form (this browser's choice). Operations can lock it to
+   sample data for everyone; the server enforces that lock, the switch only shows it. */
+function dataSwitchParts() {
+  const locked = sampleLocked(), sample = useSample();
+  const pick = (v) => () => {
+    try { localStorage.setItem("sampleData", String(v)); } catch (_) { /* private mode: the switch lasts for this page only */ }
+    shell.dataSwitch.replaceChildren(...dataSwitchParts());
+    toast(v ? "Pages now start on sample data" : "Pages now start on real data: downloaded history or your uploads");
+    showPage();
+  };
+  return [h("span", { class: "seg-label" }, "Data"),
+    h("button", { type: "button", "aria-pressed": String(sample), onclick: pick(true) }, "Sample"),
+    h("button", { type: "button", "aria-pressed": String(!sample), disabled: locked, title: locked ? "Operations has locked the platform to sample data" : "Downloaded history or your own uploads", onclick: pick(false) }, "Real"),
+    locked ? h("span", { class: "badge lock", title: "Sample-data-only mode, set by operations" }, "locked") : null].filter(Boolean);
 }
 
 /* Hash routing (#/page-id): links, the back button and bookmarks all work. An unknown page, or one this role cannot
@@ -279,16 +297,57 @@ function paramInputs(container, strat) {
   };
 }
 
-function dataFields() {
-  const source = h("select", { "aria-label": "data source" }, h("option", { value: "synthetic" }, "Synthetic"), h("option", { value: "uploaded" }, "Uploaded CSV"));
-  const symbols = h("input", { value: "AAA,BBB,CCC", style: "width:150px", "aria-label": "symbols" });
-  const bars = h("input", { type: "number", value: 756, min: 150, max: 3000, style: "width:90px" });
+/* Which data a page starts on: the header switch (per browser), unless operations has locked the platform to sample data. */
+function sampleLocked() { return !store.sources || !!store.sources.sample_only; }
+function useSample() {
+  if (sampleLocked()) return true;
+  try { return localStorage.getItem("sampleData") !== "false"; } catch (_) { return true; }
+}
+function historySymbols() { return ((store.sources && store.sources.library) || []).filter((x) => x.timeframe === "1Day").map((x) => x.symbol); }
+async function refreshSources() {
+  try { store.sources = await api("/api/data/sources"); } catch (_) { /* keep the last known state */ }
+  if (shell.dataSwitch) shell.dataSwitch.replaceChildren(...dataSwitchParts());
+  return store.sources;
+}
+
+/* The data choice on every research and validation form. `def.symbols` / `def.bars` are the sample defaults; with
+   downloaded history the same number of symbols is taken from the library instead. */
+function dataFields(def = {}) {
+  const st = store.sources || { sample_only: true, library: [], scenarios: {}, uploaded: [] };
+  const sampleSymbols = def.symbols || "AAA,BBB,CCC";
+  const count = sampleSymbols.split(",").length;
+  const hist = historySymbols();
+  const source = h("select", { "aria-label": "data source" }, h("option", { value: "sample" }, "Sample data"),
+    h("option", { value: "history", disabled: st.sample_only }, "Downloaded history" + (hist.length ? ` (${hist.length})` : "")),
+    h("option", { value: "uploaded", disabled: st.sample_only }, "Uploaded CSV"));
+  const scenario = h("select", { "aria-label": "sample scenario" }, h("option", { value: "" }, "Mixed universe"),
+    Object.keys(st.scenarios || {}).map((k) => h("option", { value: k }, k.replaceAll("_", " "))));
+  const symbols = h("input", { value: sampleSymbols, style: `width:${count > 4 ? 260 : 150}px`, "aria-label": "symbols" });
+  const bars = h("input", { type: "number", value: def.bars || 756, min: 150, max: 3000, style: "width:90px" });
   const seed = h("input", { type: "number", value: 7, style: "width:80px" });
-  const sync = () => { const up = source.value === "uploaded"; symbols.disabled = bars.disabled = seed.disabled = up; };
-  source.addEventListener("change", sync);
-  return { source, symbols, bars, seed, nodes: [field("Data", source), field("Symbols (synthetic)", symbols), field("Bars", bars), field("Seed", seed)],
-    get: () => source.value === "uploaded" ? { dataset: "uploaded" }
-      : { symbols: symbols.value.split(",").map((x) => x.trim()).filter(Boolean), bars: Number(bars.value), seed: Number(seed.value) } };
+  const hint = h("span", { class: "src-hint" });
+  const scenarioF = field("Scenario", scenario), barsF = field("Bars", bars), seedF = field("Seed", seed), symbolsF = field("Symbols", symbols);
+  let lastSample = sampleSymbols;
+  const sync = (changed) => {
+    const v = source.value;
+    scenarioF.hidden = barsF.hidden = seedF.hidden = v !== "sample";
+    symbolsF.hidden = v === "uploaded";
+    if (changed && v === "history") { lastSample = symbols.value; symbols.value = hist.slice(0, count > 4 ? 10 : count).join(","); }
+    if (changed && v === "sample") symbols.value = lastSample;
+    hint.textContent = v === "sample" ? (scenario.value ? st.scenarios[scenario.value] : "Generated prices for a correlated universe: every symbol name works.")
+      : v === "history" ? (hist.length ? `Daily bars downloaded from a data provider. In the library: ${hist.join(", ")}.` : "Nothing downloaded yet: download history on the Price data page.")
+      : ((st.uploaded || []).length ? `Your uploaded files: ${st.uploaded.join(", ")}.` : "Nothing uploaded yet: upload a CSV on the Price data page.");
+  };
+  source.value = useSample() ? "sample" : (hist.length || !(st.uploaded || []).length ? "history" : "uploaded");
+  if (source.value === "history") symbols.value = hist.slice(0, count > 4 ? 10 : count).join(",");
+  source.addEventListener("change", () => sync(true));
+  scenario.addEventListener("change", () => sync(false));
+  sync(false);
+  return { source, symbols, bars, seed, scenario, nodes: [field("Data", source), scenarioF, symbolsF, barsF, seedF, hint],
+    get: () => source.value === "uploaded" ? { source: "uploaded", dataset: "uploaded" }
+      : source.value === "history" ? { source: "history", symbols: symbols.value.split(",").map((x) => x.trim()).filter(Boolean) }
+      : { source: "sample", symbols: symbols.value.split(",").map((x) => x.trim()).filter(Boolean), bars: Number(bars.value), seed: Number(seed.value),
+          scenario: scenario.value || undefined } };
 }
 
 function riskCard(risk, title) {
@@ -444,8 +503,7 @@ function builderView() {
 const OPT_METHODS = [["random", "Random search"], ["genetic", "Genetic algorithm"], ["bayesian", "Bayesian (Gaussian process)"], ["tpe", "Tree-structured Parzen (TPE)"],
   ["pso", "Particle swarm"], ["de", "Differential evolution"], ["annealing", "Simulated annealing"], ["cmaes", "CMA-ES"]];
 function optimizeView() {
-  const root = h("div"), results = h("div"), df = dataFields();
-  df.bars.value = 500;
+  const root = h("div"), results = h("div"), df = dataFields({ bars: 500 });
   const sel = h("select"), method = h("select", { "aria-label": "search method" }, OPT_METHODS.map(([v, l]) => h("option", { value: v }, l)));
   const n = h("input", { type: "number", value: 20, min: 5, max: 60, style: "width:80px" });
   const metric = h("select", null, ["sharpe", "sortino", "calmar", "total_return", "cagr"].map((x) => h("option", { value: x }, x)));
@@ -471,9 +529,101 @@ function optimizeView() {
   return root;
 }
 
-// ----- data upload -----
+// ----- market and reference data: price data (sample generator, downloads, history library, uploads) -----
 function dataView() {
-  const root = h("div"), listBox = h("div");
+  const root = h("div");
+  const draw = () => {
+    const st = store.sources || { sample_only: true, providers: [], library: [], scenarios: {}, uploaded: [] };
+    const connected = (st.providers || []).filter((p) => p.connected);
+    root.replaceChildren(
+      h("div", { class: "banner" + (st.sample_only ? " info" : "") },
+        st.sample_only ? h("strong", null, "Sample-data-only mode") : h("strong", null, connected.length ? "Real data available" : "No data provider connected"),
+        h("span", null, st.sample_only ? " — operations has locked the platform to generated data: downloads, downloaded history and uploads are off."
+          : connected.length ? ` — connected: ${connected.map((p) => p.label).join(", ")}. ${st.library.length} series downloaded.`
+          : " — sample data and your own uploads work; operations connects Alpaca or Interactive Brokers on the Data providers page."),
+        st.can_configure ? h("a", { class: "btn ghost", href: "#/providers" }, "Data providers") : null),
+      sampleCard(st), downloadCard(st, connected, draw), libraryCard(st, draw), uploadCard(st, draw));
+  };
+  draw();
+  refreshSources().then(draw);
+  return root;
+}
+
+function sampleCard(st) {
+  const out = h("div");
+  const scenario = h("select", { "aria-label": "scenario" }, Object.entries(st.scenarios || {}).map(([k]) => h("option", { value: k }, k.replaceAll("_", " "))));
+  const desc = h("p", { class: "hint" });
+  const syncDesc = () => { desc.textContent = (st.scenarios || {})[scenario.value] || ""; };
+  scenario.addEventListener("change", syncDesc);
+  syncDesc();
+  const symbols = h("input", { value: "AAA,BBB,CCC", style: "width:160px", "aria-label": "symbols" });
+  const bars = h("input", { type: "number", value: 756, min: 60, max: 3000, style: "width:90px" });
+  const seed = h("input", { type: "number", value: 7, style: "width:80px" });
+  const run = h("button", { class: "btn", type: "submit" }, "Preview");
+  return h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/data/sample/preview", { scenario: scenario.value, symbols: symbols.value.split(",").map((x) => x.trim()).filter(Boolean),
+      bars: Number(bars.value), seed: Number(seed.value) });
+    const names = Object.keys(r.series);
+    out.replaceChildren(
+      lineChart(names.slice(0, 2).map((n, i) => ({ name: n, cls: "s" + i, fcls: "f" + i, points: r.series[n] })), { legend: true, label: "sample prices, rebased to 100" }),
+      table([{ key: "symbol", label: "Symbol" }, { key: "total_return", label: "Total return", tone: true, render: (v) => fmt.pct(v, 1) },
+        { key: "volatility", label: "Volatility / year", render: (v) => fmt.pct(v, 1) }, { key: "max_drawdown", label: "Max drawdown", render: (v) => fmt.pct(v, 1) },
+        { key: "last", label: "Last price", render: (v) => fmt.num(v) }], r.stats),
+      note("The chart shows the first two symbols, rebased to 100. To use this scenario on any page, set Data to Sample data and pick it under Scenario."));
+  }); } }, h("h2", null, "Sample data generator"),
+    h("div", { class: "row" }, field("Scenario", scenario), field("Symbols", symbols), field("Bars", bars), field("Seed", seed), run), desc,
+    note("Generated, reproducible prices (the same scenario, seed and symbol always give the same series). Good for learning the platform, testing a strategy's mechanics and seeing how it behaves in a crash or a sideways market; it says nothing about any real market."), out);
+}
+
+function downloadCard(st, connected, redraw) {
+  const today = new Date().toISOString().slice(0, 10);
+  const provider = h("select", { "aria-label": "provider" }, connected.map((p) => h("option", { value: p.name }, p.label)));
+  const symbols = h("input", { value: "SPY,AAPL,MSFT", style: "width:200px", "aria-label": "symbols to download" });
+  const timeframe = h("select", { "aria-label": "bar size" }, (st.timeframes || ["1Day"]).map((t) => h("option", { value: t }, t)));
+  timeframe.value = "1Day";
+  const start = h("input", { type: "date", value: String(new Date().getFullYear() - 3) + today.slice(4), "aria-label": "from" });
+  const end = h("input", { type: "date", value: today, "aria-label": "to" });
+  const run = h("button", { class: "btn", type: "submit" }, "Download");
+  const report = h("div");
+  const off = st.sample_only || !connected.length || !st.can_fetch;
+  run.disabled = off;
+  return h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(run, async () => {
+    const r = await api("/api/data/fetch", { provider: provider.value, symbols: symbols.value, timeframe: timeframe.value, start: start.value, end: end.value });
+    const ok = Object.keys(r.stored), bad = Object.entries(r.errors);
+    toast(`Downloaded ${ok.length} series` + (bad.length ? `, ${bad.length} failed` : ""), bad.length > 0 && !ok.length);
+    await refreshSources();
+    redraw();
+    if (bad.length) toast(bad.map(([k, v]) => `${k}: ${v}`).join(" · "), true);
+  }); } }, h("h2", null, "Download history from a data provider"),
+    h("div", { class: "row" }, field("Provider", provider), field("Symbols", symbols), field("Bar size", timeframe), field("From", start), field("To", end), run),
+    note(st.sample_only ? "Switched off: the platform is in sample-data-only mode."
+      : !connected.length ? "No provider is connected yet. Operations connects Alpaca (API keys) or Interactive Brokers (TWS or IB Gateway) on the Data providers page; until then use sample data or upload a CSV."
+      : "Bars are split- and dividend-adjusted where the provider offers it, checked and cleaned, then kept in a library everyone on the platform can use. Downloading the same symbol again from the same provider adds to it. Pages use the daily (1Day) series; intraday bars are kept for research in code."),
+    report);
+}
+
+function libraryCard(st, redraw) {
+  const chart = h("div");
+  const remove = (btn, row) => busy(btn, async () => { await api("/api/data/history/remove", { symbol: row.symbol, timeframe: row.timeframe }); await refreshSources(); redraw(); });
+  const show = (btn, row) => busy(btn, async () => {
+    const r = await api("/api/data/history/series", { symbol: row.symbol, timeframe: row.timeframe });
+    chart.replaceChildren(h("h3", { style: "margin-top:14px" }, `${r.symbol} close`), lineChart([{ name: r.symbol, cls: "s0", fcls: "f0", points: r.close }], { label: r.symbol + " close" }),
+      note(`Total return ${fmt.pct(r.stats.total_return, 1)}, volatility ${fmt.pct(r.stats.volatility, 1)} a year, worst drawdown ${fmt.pct(r.stats.max_drawdown, 1)}.`));
+  });
+  return h("div", { class: "card" }, h("h2", null, "History library"),
+    table([{ key: "symbol", label: "Symbol" }, { key: "timeframe", label: "Bars" }, { key: "provider", label: "From" },
+      { key: "start", label: "First", render: (v) => String(v).slice(0, 10) }, { key: "end", label: "Last", render: (v) => String(v).slice(0, 10) },
+      { key: "rows", label: "Rows" }, { key: "last_close", label: "Last close", render: (v) => fmt.num(v) },
+      { key: "cleaning", label: "Repaired", render: (v) => String(Object.values(v || {}).reduce((a, b) => a + b, 0)) },
+      { key: "symbol", label: "", render: (_, row) => h("div", { class: "row" },
+        st.sample_only ? null : h("button", { class: "btn ghost", type: "button", onclick: (e) => show(e.currentTarget, row) }, "Chart"),
+        st.can_fetch ? h("button", { class: "btn ghost", type: "button", onclick: (e) => remove(e.currentTarget, row) }, "Remove") : null) }],
+      st.library || [], "Nothing downloaded yet."),
+    note("Shared by every user. \"Repaired\" counts bars the cleaner fixed (high/low envelope, invalid or duplicate bars, isolated bad ticks)."), chart);
+}
+
+function uploadCard(st, redraw) {
+  const listBox = h("div");
   const file = h("input", { type: "file", accept: ".csv,text/csv", "aria-label": "CSV file" });
   const sym = h("input", { placeholder: "symbol", style: "width:110px", "aria-label": "symbol" });
   file.addEventListener("change", () => {
@@ -481,33 +631,96 @@ function dataView() {
   });
   const up = h("button", { class: "btn", type: "submit" }, "Upload");
   const clear = h("button", { class: "btn ghost", type: "button" }, "Remove all my data");
+  up.disabled = !!st.sample_only;
   const refresh = async () => {
     const rows = await api("/api/data");
     listBox.replaceChildren(table([{ key: "symbol", label: "Symbol" }, { key: "rows", label: "Rows" }, { key: "start", label: "From", render: (v) => String(v).slice(0, 10) },
       { key: "end", label: "To", render: (v) => String(v).slice(0, 10) }], rows, "Nothing uploaded yet."));
   };
   refresh().catch((e) => toast(e.message, true));
-  clear.addEventListener("click", () => busy(clear, async () => { await api("/api/data/clear", {}); await refresh(); toast("Uploaded data removed"); }));
-  root.append(h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(up, async () => {
+  clear.addEventListener("click", () => busy(clear, async () => { await api("/api/data/clear", {}); await refreshSources(); await refresh(); toast("Uploaded data removed"); }));
+  return h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(up, async () => {
     const f = file.files[0];
     if (!f) throw new Error("Choose a CSV file first");
     if (f.size > 900000) throw new Error("File too large (limit about 900 KB, 5,000 rows)");
     const r = await api("/api/data/upload", { symbol: sym.value, csv: await f.text() });
     toast(`Uploaded ${r.symbol}: ${r.rows} rows`);
     file.value = ""; sym.value = "";
+    await refreshSources();
     await refresh();
   }); } },
     h("h2", null, "Upload your own price data"),
-    h("p", { class: "hint" }, "CSV with a header row and columns date, open, high, low, close and optionally volume (one file per symbol, up to 5,000 rows, 10 symbols). Rows are checked for duplicate dates, gaps in ordering, non-positive prices and impossible highs/lows. Then choose \"Uploaded CSV\" as the data source on any research or validation page (Backtest, Optimise, Walk-forward, Portfolio, Technical lab and the others). Your data stays in server memory and is private to you."),
-    h("div", { class: "row" }, field("File", file), field("Symbol", sym), up, clear)),
-    h("div", { class: "card" }, h("h2", null, "Your uploaded data"), listBox));
+    h("p", { class: "hint" }, "CSV with a header row and columns date, open, high, low, close and optionally volume (one file per symbol, up to 5,000 rows, 10 symbols). Rows are checked for duplicate dates, gaps in ordering, non-positive prices and impossible highs/lows. Then choose \"Uploaded CSV\" as the data on any research or validation page. Your files stay in server memory and are private to you." + (st.sample_only ? " Uploads are switched off in sample-data-only mode." : "")),
+    h("div", { class: "row" }, field("File", file), field("Symbol", sym), up, clear), listBox);
+}
+
+// ----- market and reference data: data providers (operations) -----
+function providersView() {
+  const root = h("div");
+  const draw = (st) => {
+    store.sources = st;
+    if (shell.dataSwitch) shell.dataSwitch.replaceChildren(...dataSwitchParts());
+    const toggle = h("button", { class: st.sample_only ? "btn" : "btn ghost", type: "button" }, st.sample_only ? "Allow real data" : "Lock to sample data");
+    toggle.addEventListener("click", () => busy(toggle, async () => { draw(await api("/api/data/sample_only", { on: !st.sample_only })); toast(st.sample_only ? "Real data allowed" : "Locked to sample data"); }));
+    root.replaceChildren(
+      h("div", { class: "card" }, h("h2", null, "Sample-data-only mode"),
+        h("div", { class: "row", style: "align-items:center" }, h("span", { class: "badge " + (st.sample_only ? "lock" : "ok") }, st.sample_only ? "ON: generated data only" : "OFF: real data allowed"), toggle),
+        note("When on, every page runs on generated data for everyone: downloading, downloaded history, uploads and history replay in paper trading are refused by the server. Use it for training, demos, or until a provider is set up. Each user can still choose sample or real data with the switch in the header while it is off.")),
+      ...st.providers.map((p) => providerCard(p, draw)),
+      Object.keys(st.environment || {}).length ? h("div", { class: "card" }, h("h2", null, "Connected at start-up"),
+        table([{ key: "k", label: "Provider" }, { key: "v", label: "Result" }], Object.entries(st.environment).map(([k, v]) => ({ k, v })))) : "",
+      h("div", { class: "card" }, h("h2", null, "Connecting from the server's environment"),
+        note("Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY (or Alpaca's own APCA_API_KEY_ID / APCA_API_SECRET_KEY), and optionally ALPACA_DATA_FEED, before starting the server; or IB_HOST, IB_PORT and IB_CLIENT_ID for Interactive Brokers. Keys entered on this page are kept only in the server's memory (encrypted when the cryptography package is installed) and must be entered again after a restart; keys from the environment come back by themselves.")));
+  };
+  api("/api/data/providers").then(draw).catch((e) => toast(e.message, true));
   return root;
+}
+
+function providerCard(p, draw) {
+  const inputs = {};
+  const mk = (key, label, attrs, def) => {
+    const inp = attrs.options ? h("select", { "aria-label": label }, attrs.options.map((o) => h("option", { value: o }, o)))
+      : h("input", { "aria-label": label, autocomplete: "off", spellcheck: "false", ...attrs });
+    inp.value = (p.settings && p.settings[key] !== undefined ? p.settings[key] : def) ?? "";
+    inputs[key] = inp;
+    return field(label, inp);
+  };
+  const fields = p.name === "alpaca"
+    ? [mk("key_id", "API key ID", { style: "width:200px" }), mk("secret_key", "Secret key", { type: "password", style: "width:220px" }),
+       mk("feed", "Feed", { options: ["iex", "sip", "delayed_sip"] }, "iex"), mk("adjustment", "Adjustment", { options: ["all", "split", "dividend", "raw"] }, "all")]
+    : [mk("host", "Host", { style: "width:140px" }, "127.0.0.1"), mk("port", "Port", { type: "number", style: "width:90px" }, 7497),
+       mk("client_id", "Client id", { type: "number", style: "width:80px" }, 17)];
+  const connect = h("button", { class: "btn", type: "submit" }, p.connected ? "Reconnect" : "Connect");
+  const test = h("button", { class: "btn ghost", type: "button" }, "Test");
+  const disconnect = h("button", { class: "btn ghost", type: "button" }, "Disconnect");
+  test.addEventListener("click", () => busy(test, async () => {
+    const r = await api("/api/data/providers/test", { name: p.name });
+    toast(r.result.ok ? `${p.label} works: ${r.result.bars} bars of ${r.result.symbol}, last close ${fmt.num(r.result.last_close)}` : `${p.label}: ${r.result.error}`, !r.result.ok);
+    draw(r);
+  }));
+  disconnect.addEventListener("click", () => busy(disconnect, async () => { draw(await api("/api/data/providers/disconnect", { name: p.name })); toast(p.label + " disconnected"); }));
+  const last = p.status || {};
+  return h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(connect, async () => {
+    const secrets = {}, settings = {};
+    for (const k of p.secret_fields) secrets[k] = inputs[k].value.trim();
+    for (const k of Object.keys(inputs)) if (!p.secret_fields.includes(k)) settings[k] = inputs[k].type === "number" ? Number(inputs[k].value) : inputs[k].value;
+    const r = await api("/api/data/providers/connect", { name: p.name, settings, secrets });
+    for (const k of p.secret_fields) inputs[k].value = "";                     // never keep a key in the page
+    toast(p.label + " connected: use Test to check the keys");
+    draw(r);
+  }); } },
+    h("h2", null, p.label, " ", h("span", { class: "badge " + (p.connected ? "ok" : "") }, p.connected ? "connected" : "not connected")),
+    note(p.help),
+    p.connected ? note(`Connected by ${p.settings.connected_by} at ${when(p.settings.connected_at)}.` + (last.at ? ` Last test ${when(last.at)}: ${last.ok ? "ok" : "failed — " + (last.error || "")}` : "")
+      + (last.last_fetch ? ` Last download ${when(last.last_fetch)}: ${last.loaded} loaded, ${last.failed} failed.` : "")) : null,
+    h("div", { class: "row" }, ...fields, connect, p.connected ? test : null, p.connected ? disconnect : null),
+    p.name === "alpaca" ? note("Keys are sent once to the server, kept in its credential vault and never shown again. The free Alpaca plan gives the IEX feed; SIP needs a market-data subscription.")
+      : note("Start TWS or IB Gateway, enable the API (Configure › API › Settings) and allow this server's address. Paper TWS listens on 7497, live on 7496; IB Gateway on 4002 / 4001. The server needs the optional ib_async package."));
 }
 
 // ----- walk-forward -----
 function walkForwardView() {
-  const root = h("div"), results = h("div"), df = dataFields();
-  df.bars.value = 800;
+  const root = h("div"), results = h("div"), df = dataFields({ bars: 800 });
   const sel = h("select"), metric = h("select", null, ["sharpe", "sortino", "calmar", "total_return"].map((x) => h("option", { value: x }, x)));
   const train = h("input", { type: "number", value: 300, min: 50, style: "width:90px" }), test = h("input", { type: "number", value: 100, min: 10, style: "width:90px" });
   const n = h("input", { type: "number", value: 8, min: 3, max: 20, style: "width:80px" });
@@ -535,8 +748,7 @@ function walkForwardView() {
 
 // ----- multi-strategy portfolio -----
 function portfolioView() {
-  const root = h("div"), results = h("div"), rowsBox = h("div"), df = dataFields();
-  df.bars.value = 600;
+  const root = h("div"), results = h("div"), rowsBox = h("div"), df = dataFields({ bars: 600 });
   let list = [];
   const rows = [];
   const total = h("span", { class: "muted" });
@@ -628,16 +840,21 @@ function liveView() {
 }
 
 function liveOpen(show) {
-  const symbols = h("input", { value: "AAA,BBB", style: "width:150px" });
+  const hist = historySymbols();
+  const feed = h("select", { "aria-label": "price feed" }, h("option", { value: "sample" }, "Sample: random walk"),
+    h("option", { value: "history", disabled: sampleLocked() || !hist.length }, "Replay downloaded history" + (hist.length ? "" : " (none downloaded)")));
+  feed.value = !useSample() && hist.length ? "history" : "sample";
+  const symbols = h("input", { value: feed.value === "history" ? hist.slice(0, 2).join(",") : "AAA,BBB", style: "width:150px" });
+  feed.addEventListener("change", () => { symbols.value = feed.value === "history" ? hist.slice(0, 2).join(",") : "AAA,BBB"; });
   const sel = h("select", null, h("option", { value: "" }, "None (manual trading only)"));
   strategies().then((l) => l.filter((x) => x.runnable && !x.slow && x.name !== "pairs_trading" && x.name !== "momentum_rotation")
     .forEach((x) => sel.append(h("option", { value: x.name }, x.name)))).catch(() => {});
   const btn = h("button", { class: "btn", type: "submit" }, "Open paper session");
   return h("form", { class: "card", onsubmit: (e) => { e.preventDefault(); busy(btn, async () => {
-    show(await api("/api/session/open", { symbols: symbols.value.split(",").map((x) => x.trim()).filter(Boolean), strategy: sel.value || undefined }));
+    show(await api("/api/session/open", { symbols: symbols.value.split(",").map((x) => x.trim()).filter(Boolean), strategy: sel.value || undefined, feed: feed.value }));
   }); } }, h("h2", null, "Paper trading session"),
-    h("p", { class: "hint" }, "A simulated broker and a synthetic random-walk price feed on simulated time. Every order goes through the same risk gate, order manager and kill switch as the backtester; large orders can be worked by an execution algo. No real money or real market data is involved. With the server started using --db-dir, the session survives a restart."),
-    h("div", { class: "row" }, field("Symbols", symbols), field("Run a strategy", sel)), h("div", { style: "margin-top:12px" }, btn));
+    h("p", { class: "hint" }, "A simulated broker on simulated time, fed either by a sample random walk or by replaying downloaded daily history bar by bar (the strategy sees each day only when it is played). Every order goes through the same risk gate, order manager and kill switch as the backtester; large orders can be worked by an execution algo. No real money is involved. With the server started using --db-dir, the session survives a restart."),
+    h("div", { class: "row" }, field("Price feed", feed), field("Symbols", symbols), field("Run a strategy", sel)), h("div", { style: "margin-top:12px" }, btn));
 }
 
 function meter(value, limit, label) {
@@ -735,7 +952,9 @@ function renderLive(ui, snap, act) {
   const p = snap.portfolio, ks = snap.kill_switch, halted = ks.state === "TRIGGERED";
   ui.banner.className = "banner" + (halted ? " halt" : "");
   ui.status.replaceChildren(halted ? h("strong", { class: "bad" }, "TRADING HALTED") : h("strong", { class: "good" }, "Kill switch armed"), " ",
-    halted ? `${ks.reason} (${ks.source})` : `${snap.bars} bars processed`, snap.resumed ? (snap.recovery && !snap.recovery.clean ? " · resumed with a reconciliation break" : " · resumed after restart") : "");
+    halted ? `${ks.reason} (${ks.source})` : `${snap.bars} bars processed`,
+    snap.replay ? (snap.replay.available ? ` · replaying history ${snap.replay.from} to ${snap.replay.to}: bar ${snap.replay.pos} of ${snap.replay.total}` : " · the history being replayed is not available: close the session") : " · sample feed",
+    snap.resumed ? (snap.recovery && !snap.recovery.clean ? " · resumed with a reconciliation break" : " · resumed after restart") : "");
   ui.kpis.replaceChildren(kpi("Equity", fmt.money(p.equity)), kpi("Cash", fmt.money(p.cash)), kpi("Realized P&L", fmt.money(p.realized), fmt.tone(p.realized)),
     kpi("Unrealized P&L", fmt.money(p.unrealized), fmt.tone(p.unrealized)), kpi("Gross exposure", fmt.money(p.gross)), kpi("Strategy errors", snap.strategy_errors, snap.strategy_errors ? "bad" : ""));
   ui.equity.replaceChildren(lineChart([{ name: "Equity", cls: "s0", fcls: "f0", points: snap.equity_curve }], { yFmt: fmt.money, label: "live equity" }));
@@ -776,8 +995,7 @@ function renderLive(ui, snap, act) {
 
 // ----- shared helpers for the research tabs -----
 function singleSymbolFields(def) {
-  const df = dataFields();
-  df.symbols.value = def || "AAA";
+  const df = dataFields({ symbols: def || "AAA" });
   return df;
 }
 const when = (v) => v ? String(v).replace("T", " ").slice(0, 16) : "–";
@@ -888,9 +1106,7 @@ function volResults(r) {
 
 // ----- selection -----
 function selectView() {
-  const root = h("div"), out = h("div"), df = dataFields();
-  df.symbols.value = "AAA,BBB,CCC,DDD,EEE,FFF,GGG,HHH";
-  df.symbols.style.width = "260px";
+  const root = h("div"), out = h("div"), df = dataFields({ symbols: "AAA,BBB,CCC,DDD,EEE,FFF,GGG,HHH" });
   const rows = h("div");
   const addRanker = (name, weight) => {
     const sel = h("select", { "aria-label": "ranker" });
@@ -963,8 +1179,7 @@ function governanceView() {
     const c = state.can;
     if (!c.register && !c.propose) return;
     const sid = h("input", { value: "my_strategy", style: "width:160px", "aria-label": "strategy id" });
-    const sel = h("select"), params = h("div", { class: "row" }), df = dataFields(), trials = h("input", { type: "number", value: 1, min: 1, style: "width:80px" });
-    df.symbols.value = "AAA";
+    const sel = h("select"), params = h("div", { class: "row" }), df = dataFields({ symbols: "AAA" }), trials = h("input", { type: "number", value: 1, min: 1, style: "width:80px" });
     let getParams = () => ({}), list = [];
     const apply = () => { getParams = paramInputs(params, list.find((x) => x.name === sel.value)); };
     sel.addEventListener("change", apply);
@@ -1523,6 +1738,7 @@ async function boot() {
   try { store.me = await api("/api/me"); }
   catch (_) { return mount(renderLogin()); }
   try { store.structure = await api("/api/structure"); } catch (_) { store.structure = null; }   // the menu still works, with plainer titles
+  await refreshSources();
   renderApp();
 }
 boot();

@@ -12,6 +12,7 @@ dependencies = ["numpy>=1.24", "pandas>=2.0"]
 [project.optional-dependencies]
 security = ["cryptography>=42"]
 llm = ["anthropic"]                 # only for sentiment.anthropic_completer; nothing else imports it
+ib = ["ib_async"]                   # only for data.IBClient (Interactive Brokers history through TWS / IB Gateway)
 
 [project.scripts]
 algoplatform = "algoplatform.app.cli:main"

@@ -165,11 +165,11 @@ the desks a user may open.
 
 | Desk | What it does |
 |---|---|
-| `research` | backtest, optimise, score results, select instruments, map relationships, register models, propose a strategy |
+| `research` | backtest, optimise, score results, select instruments, map relationships, register models, propose a strategy, download market history |
 | `trading` | open a session on the user's own broker account, place and cancel orders, halt, personal alerts |
 | `portfolio` | allocate capital between strategies, approve or reject promotions |
 | `risk` | risk snapshot and concentration, halt and resume, demote a live strategy, firm-wide alerts |
-| `operations` | health, notification channels, undelivered notifications, instrument master, scheduled jobs |
+| `operations` | health, notification channels, undelivered notifications, instrument master, scheduled jobs, data providers, the sample-data-only lock |
 | `compliance` | audit trail, strategy history, open critical alerts (read-only) |
 | `admin` | users and roles |
 
@@ -223,6 +223,8 @@ job) never stops the others, and an error whose action is HALT (kill switch, bad
 | Notification channels holding a secret | **not stored** | listed as unresolved after a restart; register them again |
 | Fitted model objects | **not stored** (no pickling) | re-attach with `ModelRegistry.attach`, checked against the training-data fingerprint |
 | Alert rules written as code | **not stored** | only threshold-style rules can be written down |
+| Downloaded history (the shared library) | `TradingPlatform(store=...)`, key `platform.history` | rewritten only when it changed; capped at 400,000 bars |
+| Data-provider settings and the sample-data-only lock | key `platform.data` | IB settings come back connected; Alpaca keys are **not stored** (listed as `needs_keys`) unless the environment supplies them |
 
 ## 8. The web UI follows the same structure
 
@@ -235,7 +237,7 @@ the server ever disagree for any role.
 | Job group | Pages | Needs |
 |---|---|---|
 | Access control | Users and roles | `users:manage` |
-| Market and reference data | Price data · Instruments (operations loads contract specs) | `backtest:run` · `portfolio:view` |
+| Market and reference data | Price data (sample generator, downloads, history library, uploads) · Data providers · Instruments (operations loads contract specs) | `backtest:run` · `system:operate` · `portfolio:view` |
 | Signal libraries | Technical lab · News sentiment | `backtest:run` |
 | Quantitative research | Volatility · Option chain | `backtest:run` |
 | Learning and AI | Prediction models · Regimes and change points | `model:train` · `backtest:run` |
@@ -248,6 +250,20 @@ the server ever disagree for any role.
 
 The routes are split the same way: `web/server.py` (sessions, backtests, data upload, users), `web/quant_api.py`
 (technical lab, volatility, selection, approvals, alerts, structure), `web/research_api.py` (option chain, sentiment,
-prediction models, regimes) and `web/desk_api.py` (instruments, margin, currency, order book, health). To let the web
+prediction models, regimes), `web/desk_api.py` (instruments, margin, currency, order book, health) and `web/data_api.py`
+(sample preview, data providers, downloads, the history library, the sample-data-only lock). To let the web
 layer show each group, its allow-list includes the libraries it displays (`derivatives`, `research`, `ml`, `dl`, `ai`,
 `brokers` for the order-book simulator); the libraries themselves still import nothing from the web or the platform.
+
+## 9. Market data: sample, downloaded, uploaded
+
+| Source | Where it comes from | Who | Used by |
+|---|---|---|---|
+| Sample | `data/synthetic.py` scenarios through `SampleDataProvider`: seeded, any symbol and date range | everyone with research | every research page, paper trading (random walk) |
+| Downloaded history | `AlpacaDataProvider` or `IBDataProvider` (`data/providers.py`) into `HistoryLibrary` (`data/library.py`), shared by all users | operations connects; research downloads | every research page (`source="history"`), paper trading replay |
+| Uploaded | the user's own CSV files, in server memory | the uploading user only | every research page (`source="uploaded"`) |
+
+`app/marketdata.py` (`TradingPlatform.data`) holds the connections, the library and the sample-data-only lock; the desks
+expose it (research: `fetch_history`, `remove_history`; operations: `connect_data_provider`, `test_data_provider`,
+`disconnect_data_provider`, `set_sample_data_only`). Providers live in `data`, which imports only `core`: a provider is
+given its keys, it never looks them up, so the credential vault stays in the access-control layer.

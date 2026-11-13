@@ -101,6 +101,23 @@ def register(app: Any) -> None:
     P.health.register("notification delivery", lambda: (len(P.notifier.dead_letters) == 0, f"{len(P.notifier.dead_letters)} undelivered"),
                       critical=False)
     P.health.register("paper sessions", sessions_check, critical=False)
+
+    def data_check():
+        st = P.data.status()
+        if st["sample_only"]:
+            return True, "sample-data-only mode: no data provider is used"
+        parts, ok = [], True
+        for prov in st["providers"]:
+            last = prov["status"]
+            if not prov["connected"]:
+                parts.append(f"{prov['label']}: not connected")
+                continue
+            if last.get("ok") is False:
+                ok = False
+            parts.append(f"{prov['label']}: " + ("never tested" if not last else "last call ok" if last.get("ok") else "last call failed"))
+        return ok, "; ".join(parts) + f"; {len(st['library'])} downloaded series"
+
+    P.health.register("market data", data_check, critical=False)
     if P.store is not None:
         P.scheduler.every(300, P.autosave, name="save platform state")
 

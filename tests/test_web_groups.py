@@ -39,6 +39,7 @@ PROBES = {
     "currency": ("POST", "/api/risk/currency", {"holdings": [{"currency": "USD", "amount": 1}]}),
     "orderbook": ("POST", "/api/trading/orderbook", {"events": 100}),
     "health": ("GET", "/api/ops/health", {}),
+    "providers": ("GET", "/api/data/providers", {}),
     "audit": ("GET", "/api/audit", {}),
     "users": ("GET", "/api/users", {}),
     "lab": ("POST", "/api/lab/technical", SMALL),
@@ -212,7 +213,7 @@ class DeskRouteTests(WebQuantTestCase):
     def test_operations_health_jobs_and_replay(self):
         r = self.ok("operations", "GET", "/api/ops/health")
         self.assertEqual(r["health"]["status"], "UP")
-        self.assertEqual({i["name"] for i in r["health"]["items"]}, {"state store", "notification delivery", "paper sessions"})
+        self.assertEqual({i["name"] for i in r["health"]["items"]}, {"state store", "notification delivery", "paper sessions", "market data"})
         self.assertFalse(r["persistent"])
         self.assertEqual(self.ok("operations", "POST", "/api/ops/replay", {}), {"delivered": 0, "still_failing": 0})
         self.assertEqual(self.ok("operations", "POST", "/api/ops/run_jobs", {}), {"ran": []})
