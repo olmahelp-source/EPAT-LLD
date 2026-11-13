@@ -223,7 +223,7 @@ job) never stops the others, and an error whose action is HALT (kill switch, bad
 | Notification channels holding a secret | **not stored** | listed as unresolved after a restart; register them again |
 | Fitted model objects | **not stored** (no pickling) | re-attach with `ModelRegistry.attach`, checked against the training-data fingerprint |
 | Alert rules written as code | **not stored** | only threshold-style rules can be written down |
-| Downloaded history (the shared library) | `TradingPlatform(store=...)`, key `platform.history` | rewritten only when it changed; capped at 400,000 bars |
+| Downloaded history (the shared library) | `TradingPlatform(store=...)`, tables `bar_series` and `bars` (schema v3, one row per bar) | written as it changes, before memory; capped at 400,000 bars; history saved by an earlier version under `platform.history` is moved once |
 | Data-provider settings and the sample-data-only lock | key `platform.data` | IB settings come back connected; Alpaca keys are **not stored** (listed as `needs_keys`) unless the environment supplies them |
 
 ## 8. The web UI follows the same structure
@@ -248,10 +248,19 @@ the server ever disagree for any role.
 | Operations and control | Strategy approvals · Alerts and inbox · Health and jobs · Audit log | `order:view` · `risk:view` · `system:operate` · `audit:view` |
 | Application | Home: your role, desks and groups, and the whole map | everyone |
 
-The routes are split the same way: `web/server.py` (sessions, backtests, data upload, users), `web/quant_api.py`
-(technical lab, volatility, selection, approvals, alerts, structure), `web/research_api.py` (option chain, sentiment,
-prediction models, regimes), `web/desk_api.py` (instruments, margin, currency, order book, health) and `web/data_api.py`
-(sample preview, data providers, downloads, the history library, the sample-data-only lock). To let the web
+The API is split the same way: `web/routes/<group>.py`, one module per job group (`access`, `market_data`, `signals`,
+`quant`, `learning`, `strategy`, `capital`, `trading`, `validation`, `operations`, `application`). Around them:
+
+| File | Layer | Job |
+|---|---|---|
+| `web/http.py` | middleware | request parsing and size limit, JSON-only bodies, static files confined to `static/`, security headers, the authenticated event stream, the threaded server |
+| `web/server.py` | application | `App`: the route table, token check and dispatch, mapping platform errors to HTTP codes, the data source of a request, shared state (sessions, uploads), closing every database |
+| `web/session.py` | trading | the paper-trading feed (sample random walk or replayed history) and the metrics alert rules read |
+| `web/common.py` | shared | JSON-safe conversion, chart series, small parsing helpers |
+| `web/routes/*.py` | API | the routes of one job group each |
+
+`tests/test_web_groups.py` checks that the route modules are exactly the job groups, that no route is registered twice,
+and that each page of the UI calls routes of its own group. To let the web
 layer show each group, its allow-list includes the libraries it displays (`derivatives`, `research`, `ml`, `dl`, `ai`,
 `brokers` for the order-book simulator); the libraries themselves still import nothing from the web or the platform.
 

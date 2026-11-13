@@ -69,6 +69,36 @@ class FrontendFollowsTheStructureTests(unittest.TestCase):
             self.assertTrue(p["perm"] or p["id"] == "home", f"{p['id']} is shown to everyone")
 
 
+class ApiFollowsTheStructureTests(unittest.TestCase):
+    """The API has one route module per job group, and every page calls routes of its own group."""
+
+    ROUTES_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "algoplatform", "web", "routes")
+
+    def registered(self):
+        out = {}
+        for name in os.listdir(self.ROUTES_DIR):
+            if name.endswith(".py") and not name.startswith("__"):
+                with open(os.path.join(self.ROUTES_DIR, name), encoding="utf-8") as fh:
+                    out[name[:-3]] = set(re.findall(r'@r\("(?:GET|POST)", "([^"]+)"', fh.read()))
+        return out
+
+    def test_route_modules_are_the_job_groups(self):
+        from algoplatform.web.routes import MODULES
+        modules = self.registered()
+        self.assertEqual(set(modules), {g.key for g in GROUPS} - {"foundation"})
+        self.assertEqual(set(MODULES), set(modules))
+        self.assertTrue(all(paths for paths in modules.values()), "a group module with no routes")
+        everything = [p for paths in modules.values() for p in paths]
+        self.assertEqual(len(everything), len(set(everything)), "a route registered by two modules")
+
+    def test_each_page_calls_its_own_groups_routes(self):
+        modules = self.registered()
+        pages = {p["id"]: p for p in frontend_pages()[0]}
+        for page_id, (_method, path, _body) in PROBES.items():
+            owner = next(g for g, paths in modules.items() if path in paths)
+            self.assertEqual(owner, pages[page_id]["group"], f"page {page_id} ({pages[page_id]['group']}) calls {path} from {owner}")
+
+
 class MenuMatchesServerTests(WebQuantTestCase):
     def test_a_page_is_shown_exactly_when_the_server_lets_the_role_use_it(self):
         pages = {p["id"]: p for p in frontend_pages()[0]}

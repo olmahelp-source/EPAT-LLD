@@ -21,10 +21,10 @@ default branch merged into it (commit `a1631ed`, no file changes), so a new pull
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
 | Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
-| Whole test-suite | **818 tests pass** (407 original + 411 new), with deprecation warnings treated as errors. |
+| Whole test-suite | **820 tests pass** (407 original + 413 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
-| Type checker (`mypy`) | **No findings in the files added by this work.** 112 findings remain in files that predate it (the CI job stays informational). |
+| Type checker (`mypy`) | **No findings in the files added by this work.** 109 findings remain in files that predate it (the CI job stays informational). |
 | Web UI | **Done, grouped by job.** The menu follows the 12 job groups of `architecture.py` (titles come from the server); 25 pages; every group except Foundation has a page. A Sample / Real data switch in the header. Checked in a headless browser as all eight roles, on desktop and phone width. |
 | Restart safety of the shared services | **Done.** Including downloaded history and data-provider settings (round four); API keys are never written to disk. |
 | Market data (round four) | **Done, tested against fakes.** Sample generator with 8 scenarios; Alpaca and Interactive Brokers history providers; shared history library; sample-data-only lock; paper trading on replayed history. No call made with real Alpaca keys or a real IB gateway (see section 6). |
@@ -191,12 +191,12 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_margin_currency_orderbook.py` | 39 | passing |
 | `tests/test_state_persistence.py` | 19 | passing |
 | `tests/test_web_quant.py` | 15 | passing |
-| `tests/test_web_groups.py` (menu follows the structure and the server; new routes) | 16 | passing |
+| `tests/test_web_groups.py` (menu and API follow the structure; the menu matches the server; routes) | 18 | passing |
 | `tests/test_data_providers.py` (scenarios, Alpaca and IB against fakes, history library) | 18 | passing |
 | `tests/test_market_data_service.py` (connections, keys, downloads, sample-only lock, environment, restart) | 8 | passing |
 | `tests/test_web_data.py` (data routes, source of every request, lock on the server, history replay and its restart) | 9 | passing |
 | `tests/test_cli.py` (data sources, data commands with a fake Alpaca, the shared lock, the web command) | 7 | passing |
-| **Total** | **818** | **passing** |
+| **Total** | **820** | **passing** |
 
 ---
 
@@ -211,7 +211,7 @@ check frontend, backend, middleware, database and API against the platform's rul
 | Small fixes: the order manager refuses a reused order id (`DuplicateOrderError`) instead of overwriting; unused `make_loopback` removed; ignore rules for tool caches and logs; 39 local cache folders and a generated report deleted | **done, tested** |
 | Database: downloaded history moved from one JSON document to `bar_series` / `bars` tables (schema v3, upgrade in place), written as it changes; old-format history moved once; `App.close()` closes every database (no more unclosed-connection warnings in the web tests) | **done, tested** |
 | CLI updated (requested during round five): `backtest` / `optimize` take `--source sample|history|csv` and `--scenario`; new `data` commands (scenarios, sample, providers, fetch, list, export, remove, sample-only) on the same state directory and service as the web server; `web` command through the top-level launcher (the installed `algoplatform` command now points there) | **done, tested** (`test_cli`) |
-| API: one route module per job group; HTTP middleware and the paper feed in their own files | pending |
+| API: the 60 routes moved unchanged from five mixed files into `web/routes/<group>.py`, one module per job group; `web/http.py` (middleware), `web/session.py` (paper feed), `web/common.py` (shared helpers); `web/server.py` down from 912 to 289 lines (the app only); `quant_api.py`, `research_api.py`, `desk_api.py`, `data_api.py` deleted; tests check route modules = job groups and each page calls its own group's routes; 3 old type findings fixed on the way | **done, tested** (full suite, browser walkthrough) |
 | Frontend: one script per job group; a sample-scenario choice beside the Sample / Real switch | pending |
 
 
@@ -283,6 +283,7 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | round five audit script (unimported modules, unreferenced names, identical function bodies) | 0 unimported modules, 2 unused names (fixed), 0 duplicate bodies |
 | 2026-11-13 | full suite after the database change (exit status checked); ruff; structure; mypy; resource warnings in the web tests | **811 tests, OK**; clean; OK; 112 pre-existing findings; 0 unclosed connections |
 | 2026-11-13 | `cd tests && python -m unittest test_cli`; full suite (exit status checked); ruff; structure; mypy | 7 tests OK; **818 tests, OK**; clean; OK; 112 pre-existing findings |
+| 2026-11-13 | after the API restructure: full suite (exit status checked); ruff; structure; mypy; browser walkthrough with a fake Alpaca; every page as admin checked for stray text | **820 tests, OK**, no warnings in the log; clean; OK; 109 pre-existing findings; walkthrough passed (no JavaScript errors, no page wider than a phone, no "null") |
 | 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---
