@@ -38,6 +38,17 @@ class OMSTests(unittest.TestCase):
     def fill(self, o, qty, price, fid):
         return Fill(fid, o.client_order_id, o.symbol, o.side, qty, price, None)
 
+    def test_an_id_already_in_use_is_refused_not_overwritten(self):
+        from algoplatform.core.exceptions import DuplicateOrderError
+        from algoplatform.utils.helpers import IdGenerator
+        first = OrderManager(EventBus(), clock=SimClock(), ids=IdGenerator("ORD", run_token="r1")).create("AAA", Side.BUY, 10)
+        restarted = OrderManager(EventBus(), clock=SimClock(), ids=IdGenerator("ORD", run_token="r1"))   # a run token repeated
+        restarted.restore([first])
+        with self.assertRaises(DuplicateOrderError):
+            restarted.create("AAA", Side.SELL, 5)
+        self.assertEqual(restarted.get(first.client_order_id).side, Side.BUY)            # the restored order is untouched
+        self.assertEqual(len(restarted.all_orders()), 1)
+
     def test_idempotent_create(self):
         a = self.oms.create("X", Side.BUY, 10, idempotency_key="k1")
         b = self.oms.create("X", Side.BUY, 10, idempotency_key="k1")

@@ -3,12 +3,15 @@
 This file is the single source of truth for what has been built, what has been verified, and what is still pending.
 It is updated at the end of every unit of work. Rules for keeping it honest are in [`CLAUDE.md`](CLAUDE.md).
 
-**Last updated:** 2026-11-13, after the second round of pending tasks
+**Last updated:** 2026-11-13, after round five (repository audit and restructuring, CLI)
 **Working branch:** `ccr-b7d3820c-a4gug7`
 **Default branch:** `claude/trading-platform-system-y9ke4s`
 
-**Merge state.** Pull request #2 merged the first part of this work (all source and tests up to that point). Everything
-after it is on the working branch, which already contains the default branch, and is proposed in pull request #3.
+**Merge state.** Pull request #2 merged the first part of this work, and pull request #3 merged round two (at 08:44
+UTC on 2026-11-13, head `e3d8918`). Round three (the web UI regrouped by job group, commit `a1b58dd`) was pushed after
+that merge. Rounds three to five are proposed together in **pull request #4**
+(https://github.com/olmahelp-source/EPAT-LLD/pull/4), opened at the owner's request; the working branch already
+contains the default branch, so the pull request shows only this work.
 
 ---
 
@@ -18,15 +21,16 @@ after it is on the working branch, which already contains the default branch, an
 |---|---|
 | Every item of the original request | **Done.** Code and passing tests for all 27 items. |
 | Items found missing in the gap analysis | **Done** except live-service verification (cannot be done here, see section 6). Margin, multi-currency accounting and an order-book simulator were built in round two. |
-| Size of the work | 75 new source files and 23 modified ones (about 12,300 lines of source, 5,100 lines of tests), on top of the original platform. |
-| Whole test-suite | **757 tests pass** (407 original + 350 new), with deprecation warnings treated as errors. |
+| Size of the work | 77 new source files (two of them added in round three) plus the modified files listed in section 5: about 13,400 lines of source and UI and 5,350 lines of tests, on top of the original platform. Round three alone: +1,090 lines of source and UI, +242 lines of tests (`git diff --numstat`). |
+| Whole test-suite | **822 tests pass** (407 original + 415 new), with deprecation warnings treated as errors. |
 | Dependency rules ("do not mix concerns") | **Verified.** `python -m algoplatform structure --check` reports no violation; the same check is a unit test. |
 | Linter (`ruff`) | **Clean.** |
-| Type checker (`mypy`) | **No findings in the files added by this work.** 113 findings remain in files that predate it (the CI job stays informational). |
-| Web UI | **Done.** Six new tabs, checked in a headless browser as five different roles. |
-| Restart safety of the shared services | **Done.** |
+| Type checker (`mypy`) | **No findings in the files added by this work.** 109 findings remain in files that predate it (the CI job stays informational). |
+| Web UI | **Done, grouped by job.** The menu follows the 12 job groups of `architecture.py` (titles come from the server); 25 pages; every group except Foundation has a page. A Sample / Real data switch in the header. Checked in a headless browser as all eight roles, on desktop and phone width. |
+| Restart safety of the shared services | **Done.** Including downloaded history and data-provider settings (round four); API keys are never written to disk. |
+| Market data (round four) | **Done, tested against fakes.** Sample generator with 8 scenarios; Alpaca and Interactive Brokers history providers; shared history library; sample-data-only lock; paper trading on replayed history. No call made with real Alpaca keys or a real IB gateway (see section 6). |
 | Example scripts | All three run. |
-| CI on GitHub | Passed (lint and tests on Python 3.10 to 3.13) for every pushed commit since the lint fixes; see section 7. |
+| CI on GitHub | Round three (run 24, commit `a1b58dd`): lint, tests on Python 3.10 to 3.13 and the optional-dependencies job all passed. The type-check job fails as before (informational): 112 findings, all in files that predate this work. Every earlier commit since the lint fixes passed; see section 7. |
 
 ---
 
@@ -98,7 +102,9 @@ repository.
 | - | Multi-currency accounting (from the gap analysis) | `portfolio/currency.py`: point-in-time FX rates with cross rates, cash per currency, exposure, FX P&L attribution, hedge amounts | done | passing (`test_margin_currency_orderbook`) |
 | - | Order book and tick simulation (from the gap analysis) | `brokers/orderbook.py`: matching engine, queue position, cost to trade, seeded simulator with latency, tick-to-bar | done | passing (`test_margin_currency_orderbook`) |
 | - | Restart safety of the shared services | `save_state` / `load_state` / autosave in `app/platform.py`; `export_state` / `import_state` on each service | done | passing (`test_state_persistence`, `test_web_quant`) |
-| - | Web UI for the new features | `web/quant_api.py`, six tabs in `web/static/app.js` | done | passing (`test_web_quant`); browser walkthrough |
+| - | Web UI for the new features | `web/quant_api.py`, six pages in `web/static/app.js` | done | passing (`test_web_quant`); browser walkthrough |
+| - | Sample data generator, historical data from a broker or data provider, sample/real switch (round four) | `data/synthetic.py` (scenarios), `data/providers.py`, `data/library.py`, `app/marketdata.py`, `web/data_api.py`, Price data and Data providers pages, header switch, paper-trading replay | done | passing (`test_data_providers`, `test_market_data_service`, `test_web_data`); browser walkthrough with a fake Alpaca |
+| - | Web UI grouped by job (round three) | `web/static/app.js` (menu by job group, hash routing, Home), `web/research_api.py` (option chain, sentiment, prediction models, regimes), `web/desk_api.py` (instruments, margin, currency, order book, health), 8 optimiser methods, audit log on the compliance permission | done | passing (`test_web_groups`); browser walkthrough as 8 roles |
 
 ---
 
@@ -151,7 +157,7 @@ Each package also has an `__init__.py` that exports its public names.
 
 ### New files in existing packages
 
-`risk/margin.py`, `portfolio/currency.py`, `brokers/orderbook.py`, `web/quant_api.py` (round two);
+`data/providers.py`, `data/library.py`, `app/marketdata.py`, `web/data_api.py` (round four); `web/research_api.py`, `web/desk_api.py` (round three); `risk/margin.py`, `portfolio/currency.py`, `brokers/orderbook.py`, `web/quant_api.py` (round two);
 `utils/resilience.py`, `utils/numeric.py`, `derivatives/chain.py`, `optimize/advanced.py`, `analytics/evaluation.py`,
 `sentiment/llm.py`, `strategy/expression.py`, `strategy/policy.py`, `app/workspaces.py`, and the top-level
 `architecture.py`.
@@ -163,7 +169,7 @@ Each package also has an `__init__.py` that exports its public names.
 `sentiment/__init__.py`, `analytics/__init__.py`, `optimize/__init__.py`, `optimize/optimizers.py` (dispatcher knows the
 new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py` (new shared services, `desk()` /
 `desks()`), `app/__init__.py`, `app/cli.py` (`structure` and `functions` commands, new optimiser names),
-`web/static/app.js` (role list), `algoplatform/__init__.py` (version 0.2.0).
+`web/static/app.js` and `web/static/styles.css` (rebuilt around the job groups in round three), `web/server.py` (registers the new route files, optimiser methods, audit permission), `architecture.py` (web allow-list), `app/workspaces.py` (`load_instruments(overwrite=...)`), `algoplatform/__init__.py` (version 0.2.0). Round four: `core/exceptions.py` (three data-provider errors), `data/synthetic.py` (scenarios), `data/__init__.py`, `app/platform.py` (`TradingPlatform.data`, parts saved only when changed), `app/workspaces.py` (data desk methods), `web/server.py` (data source of every request, history replay), `web/desk_api.py` (market-data health check), `web/static/*` (switch, Price data and Data providers pages), `pyproject.toml` (`ib` extra).
 
 ### Other new or changed files
 
@@ -186,23 +192,58 @@ new methods), `stats/tests.py` (half-life fix, see section 8), `app/platform.py`
 | `tests/test_margin_currency_orderbook.py` | 39 | passing |
 | `tests/test_state_persistence.py` | 19 | passing |
 | `tests/test_web_quant.py` | 15 | passing |
-| **Total** | **757** | **passing** |
+| `tests/test_web_groups.py` (menu, scripts and API follow the structure; the menu matches the server; routes) | 20 | passing |
+| `tests/test_data_providers.py` (scenarios, Alpaca and IB against fakes, history library) | 18 | passing |
+| `tests/test_market_data_service.py` (connections, keys, downloads, sample-only lock, environment, restart) | 8 | passing |
+| `tests/test_web_data.py` (data routes, source of every request, lock on the server, history replay and its restart) | 9 | passing |
+| `tests/test_cli.py` (data sources, data commands with a fake Alpaca, the shared lock, the web command) | 7 | passing |
+| **Total** | **822** | **passing** |
 
 ---
 
 ## 6. Pending tasks
 
-Round two completed every pending item that can be done from this environment. What is left:
+**Round five, done** (requested: audit the whole file structure; remove messy, duplicate and unnecessary files;
+check frontend, backend, middleware, database and API against the platform's rules; a switch for which sample data to use).
+
+| Step | State |
+|---|---|
+| Audit: inventory of all 238 tracked files; nothing generated is tracked; every module is imported; no duplicated function bodies; two unused names | **done** |
+| Small fixes: the order manager refuses a reused order id (`DuplicateOrderError`) instead of overwriting; unused `make_loopback` removed; ignore rules for tool caches and logs; 39 local cache folders and a generated report deleted | **done, tested** |
+| Database: downloaded history moved from one JSON document to `bar_series` / `bars` tables (schema v3, upgrade in place), written as it changes; old-format history moved once; `App.close()` closes every database (no more unclosed-connection warnings in the web tests) | **done, tested** |
+| CLI updated (requested during round five): `backtest` / `optimize` take `--source sample|history|csv` and `--scenario`; new `data` commands (scenarios, sample, providers, fetch, list, export, remove, sample-only) on the same state directory and service as the web server; `web` command through the top-level launcher (the installed `algoplatform` command now points there) | **done, tested** (`test_cli`) |
+| API: the 60 routes moved unchanged from five mixed files into `web/routes/<group>.py`, one module per job group; `web/http.py` (middleware), `web/session.py` (paper feed), `web/common.py` (shared helpers); `web/server.py` down from 912 to 289 lines (the app only); `quant_api.py`, `research_api.py`, `desk_api.py`, `data_api.py` deleted; tests check route modules = job groups and each page calls its own group's routes; 3 old type findings fixed on the way | **done, tested** (full suite, browser walkthrough) |
+| Frontend: `app.js` (1,744 lines) split into `js/core.js`, `js/pages/<group>.js` (one per job group, same names as the route modules) and `js/shell.js`; a sample-scenario dropdown beside the Sample / Real switch sets the scenario every data form and the generator start with; tests check each page lives in its group's script and the load order | **done, tested** (full suite, three browser walkthroughs) |
+
+
+**Round four, done** (requested: "add a sample data generator, or historical data from a broker (Alpaca or IB), or
+connect a data provider; add a switch for sample data"). All three were built:
+
+| Part | Where | State |
+|---|---|---|
+| Sample data generator: 8 named scenarios, daily or intraday, seeded, symbol-stable | `data/synthetic.py`, `SampleDataProvider`; Price data page; every data form | done, tested |
+| Historical data from Alpaca (stocks and crypto) and Interactive Brokers (TWS / IB Gateway) | `data/providers.py`; Data providers page (operations) and Price data page (download) | done, **tested against fakes only** |
+| A data provider connection: keys in the credential vault, or environment variables at start-up | `app/marketdata.py` | done, tested |
+| Shared history library, saved with the platform state | `data/library.py` | done, tested |
+| Switch for sample data: per browser in the header (Sample / Real), and a platform-wide sample-data-only lock for operations that the server enforces | `web/static/app.js`, `app/marketdata.py` | done, tested |
+| Paper trading on replayed downloaded history (survives a restart) | `web/server.py` `LiveSession` | done, tested |
+
+Rounds two to four completed every pending item that can be done from this environment. What is left:
 
 | # | Task | State | Why it is not done |
 |---|---|---|---|
-| 1 | Merge pull request #3 into the default branch | **waiting for the owner** | Opened: https://github.com/olmahelp-source/EPAT-LLD/pull/3. Merging into the default branch is the repository owner's decision, as with pull request #2. |
-| 2 | Run the integrations against real services: Claude sentiment client, Slack, Telegram, webhook, e-mail, broker sandboxes | **blocked** | Needs the owner's credentials and accounts; nothing here should send messages or orders to real services. All are tested against fakes. |
-| 3 | Type findings in the 113 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
+| 1 | Merge pull request #4 (rounds three to five) into the default branch | **waiting for the owner** | Opened: https://github.com/olmahelp-source/EPAT-LLD/pull/4. Merging is the owner's decision, as with #2 and #3. |
+| 2 | Run the integrations against real services: Claude sentiment client, Slack, Telegram, webhook, e-mail, broker sandboxes, **Alpaca market data, Interactive Brokers history** | **blocked** | Needs the owner's credentials and accounts (and, for IB, a running TWS or IB Gateway); nothing here should send messages or orders to real services. All are tested against fakes. Alpaca's data server answered from this environment (HTTP 401 without keys), so the Alpaca check can be run here once keys are supplied: set them on the Data providers page and press Test. |
+| 3 | Type findings in the 112 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
 | 4 | Move packages into one folder per job group | not started, optional | Changes every import path; a decision for the owner. The grouping is already enforced by `architecture.py`. |
 
 Done in round two (previously pending): web UI for the new features; persistence of the new shared services; type
 findings in new files; margin model; multi-currency accounting; order-book and tick simulator; documentation.
+
+Done in round three (requested: "update the frontend as per the new structure"): the menu is grouped by job group;
+pages added for the groups and features that had none (instruments, news sentiment, option chain, prediction models,
+regimes and change points, margin, currency exposure, order-book simulator, health and jobs, audit log, users and
+roles, Home); all eight optimiser methods on the Optimise page.
 
 ---
 
@@ -227,6 +268,27 @@ findings in new files; margin model; multi-currency accounting; order-book and t
 | 2026-11-13 | `python -m mypy src/algoplatform` | 0 findings in new files; 113 in pre-existing files |
 | 2026-11-13 | `python -m ruff check .`; `python -m algoplatform structure --check` | clean; dependency rules OK |
 | 2026-11-13 | headless browser (Playwright) against a live server: quant, trader, portfolio manager, risk manager, viewer | every new tab loads and works; tabs hidden from roles that cannot use them; a personal alert fired into the trader's inbox; the trader could not acknowledge a kill-switch alert, the risk manager could; no layout overflow at phone width; no JavaScript errors |
+| 2026-11-13 | `cd tests && python -m unittest test_web_groups` | 16 tests, OK |
+| 2026-11-13 | full suite with deprecation warnings as errors (exit status checked) | **773 tests, OK** |
+| 2026-11-13 | `python -m ruff check .`; `python -m algoplatform structure --check`; `python -m mypy src/algoplatform` | clean; dependency rules OK; 0 findings in new files, 112 in pre-existing files |
+| 2026-11-13 | headless browser against a live server with `--db-dir`, all eight roles, desktop and 390 px phone width | each role's menu holds exactly its pages; every page's main action works (option chain, sentiment, 7 models, regimes, margin from entered and from paper positions, currency, order book, instrument load, health, audit filter, Bayesian optimisation); a forbidden deep link falls back to Home; phone menu opens and closes; no page wider than the screen; no "null", "undefined" or "NaN" on any page; no JavaScript errors; loaded instruments still there after a server restart |
+| 2026-11-13 | GitHub Actions, workflow "CI", run 24 (commit `a1b58dd`, round three) | lint: success; test 3.10, 3.11, 3.12, 3.13: success; optional-dependencies: success; run conclusion: success; typecheck (informational): failure, 112 findings, same files as locally, none in files added by this work |
+| 2026-11-13 | GitHub Actions, runs 18 to 22 (round two, including pull-request runs 20 and 22) | all success |
+| 2026-11-13 | `cd tests && python -m unittest test_data_providers`; full suite (exit status checked); ruff; structure check; mypy on `data/` | 18 tests OK; **791 tests, OK**; clean; dependency rules OK; no findings in the new data files |
+| 2026-11-13 | `cd tests && python -m unittest test_market_data_service test_state_persistence`; full suite (exit status checked); ruff; structure; mypy | 27 tests OK; **799 tests, OK**; clean; OK; 112 findings, all in pre-existing files |
+| 2026-11-13 | `cd tests && python -m unittest test_web_data test_web_groups` | 25 tests, OK |
+| 2026-11-13 | full suite with deprecation warnings as errors (exit status checked); ruff; structure check; mypy | **808 tests, OK**; clean; dependency rules OK; 112 findings, all in pre-existing files |
+| 2026-11-13 | headless browser against a live server with `--db-dir` and a fake Alpaca transport | operations connected Alpaca with a wrong key (Test reported the 401) then the right one (Test ok); the key never appeared in the page; quant previewed a crash scenario, downloaded SPY, AAPL, MSFT and an unknown symbol (reported, the rest loaded), charted a series; after switching the header to Real, Backtest and Technical lab started on downloaded history and ran; the trader replayed history in paper trading; after operations locked to sample data, the header showed the lock, history options were disabled, downloads were off and a history replay step was refused by the server; no page wider than a phone; no "null" on any page; no JavaScript errors |
+| 2026-11-13 | `curl https://data.alpaca.markets/v2/stocks/SPY/bars` without keys | HTTP 401: the host is reachable from this environment; nothing else was sent |
+| 2026-11-13 | GitHub Actions run 28 (round four, commit `bc4f137`); runs 25 to 27 | all success |
+| 2026-11-13 | round five audit script (unimported modules, unreferenced names, identical function bodies) | 0 unimported modules, 2 unused names (fixed), 0 duplicate bodies |
+| 2026-11-13 | full suite after the database change (exit status checked); ruff; structure; mypy; resource warnings in the web tests | **811 tests, OK**; clean; OK; 112 pre-existing findings; 0 unclosed connections |
+| 2026-11-13 | `cd tests && python -m unittest test_cli`; full suite (exit status checked); ruff; structure; mypy | 7 tests OK; **818 tests, OK**; clean; OK; 112 pre-existing findings |
+| 2026-11-13 | after the API restructure: full suite (exit status checked); ruff; structure; mypy; browser walkthrough with a fake Alpaca; every page as admin checked for stray text | **820 tests, OK**, no warnings in the log; clean; OK; 109 pre-existing findings; walkthrough passed (no JavaScript errors, no page wider than a phone, no "null") |
+| 2026-11-13 | after the frontend split: `test_web_groups`, `test_web`; full suite (exit status checked); ruff; structure; mypy; browser: scenario dropdown, data walkthrough with a fake Alpaca, all-roles walkthrough on a fresh server, every page as admin | 29 tests OK; **822 tests, OK**; clean; OK; 109 pre-existing findings; all walkthroughs passed (13 scripts load, no JavaScript errors, no page wider than a phone, no "null") |
+| 2026-11-13 | GitHub Actions runs 29 to 33 (round five, commits `b5c45e0` to `36a432f`) | all success |
+| 2026-11-13 | pull request #4 opened (GitHub API) | https://github.com/olmahelp-source/EPAT-LLD/pull/4, base `claude/trading-platform-system-y9ke4s`, 11 commits, 63 files |
+| 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---
 
@@ -249,6 +311,27 @@ Found in round two:
 - The Paper trading and research tabs were shown to roles that cannot use them (a viewer saw Backtest).
 - A web test assumed an exact catalogue size; it was committed once with that failure because a chained shell
   command did not stop on it. Fixed in the next commit; the full suite's exit status is now checked before committing.
+
+Found in round three:
+
+- The Paper trading page printed the word "null" under the algo-order table when there was no cost summary, and the
+  Strategy approvals page did the same when no decision had been made yet (`replaceChildren(null)` writes "null").
+- The audit-log route required the admin or risk-manager role, so an auditor (who has `audit:view` and the compliance
+  desk) could not read it. It now follows `audit:view`.
+- Re-loading a corrected instrument was always rejected as a duplicate, with no way to replace it. The operations desk
+  now takes `overwrite`, recorded in the audit entry; without it a duplicate is still refused.
+- The option-chain route treated an empty list of expiries as "use the defaults"; it is now refused.
+
+Found in round four:
+
+- The first version of the scenarios let the shared random noise swamp the trend: with one seed the "bull trend" ended
+  lower than it started. The noise is now centred, so each scenario reliably looks like its name (checked for three
+  seeds in `test_data_providers`).
+- Skipping the save of an unchanged part was first keyed by part only, so an explicit save to a second store would
+  have skipped unchanged history; it is now keyed by store and part (checked in `test_state_persistence`).
+- The provider health check reported a provider as failing when one unknown ticker in a download failed; it now fails
+  only when nothing in the download loaded.
+- The Data providers page printed "null" when no provider came from the environment (`replaceChildren(null)`).
 
 Found during development, before the tests were written:
 
@@ -277,3 +360,6 @@ that a 90% interval always contains zero for one random sample).
 - The order-book simulator's background flow is random; the engine and backtester still run on bars.
 - After a restart, channels holding secrets, fitted model objects and alert rules written as code must be supplied
   again; the restore report lists them.
+- The web UI's research pages run on synthetic prices (or uploaded CSVs) and a synthetic option chain; the
+  news-sentiment page uses the word list and event rules, not the language-model scorer; prediction-model results are
+  gross of costs.

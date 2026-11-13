@@ -359,13 +359,26 @@ class PlatformStateTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             bare.load_state()
         bare.instruments.add(ContractSpec("ZZZ"))
+        bare.data.library.put("HIST", "1Day", self.bars(), "alpaca")
         store = SqliteStore(":memory:")
         self.addCleanup(store.close)
         result = bare.save_state(store)
-        self.assertEqual((sorted(result["saved"]), result["errors"]), (["alerts", "instruments", "lifecycle", "models", "notifier"], {}))
+        self.assertEqual((sorted(result["saved"]), result["errors"]),
+                         (["alerts", "data", "history", "instruments", "lifecycle", "models", "notifier"], {}))
+        self.assertEqual([s["symbol"] for s in store.bar_series()], ["HIST"])         # history is copied to a store it is not attached to
+        second = SqliteStore(":memory:")                                              # unchanged parts still reach a new store
+        self.addCleanup(second.close)
+        bare.save_state(second)
+        self.assertEqual(second.bar_series()[0]["rows"], 30)
         other = TradingPlatform(PlatformConfig(log_level="CRITICAL"))
         other.load_state(store)
         self.assertIn("ZZZ", other.instruments)
+        self.assertEqual(len(other.data.library.get("HIST")), 30)
+
+    @staticmethod
+    def bars():
+        idx = pd.bdate_range("2024-01-01", periods=30)
+        return pd.DataFrame({"open": 10.0, "high": 11.0, "low": 9.0, "close": 10.5, "volume": 1.0}, index=idx)
 
     def test_a_part_that_cannot_be_saved_is_reported_and_the_rest_is_written(self):
         p, _ = self.boot()

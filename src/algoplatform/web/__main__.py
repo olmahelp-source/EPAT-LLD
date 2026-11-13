@@ -1,11 +1,6 @@
-import argparse
+"""``python -m algoplatform.web [--host] [--port] [--db-dir]``: the same as ``python -m algoplatform web``."""
+import sys
 
-from .server import serve
+from ..__main__ import run
 
-ap = argparse.ArgumentParser(description="algoplatform web UI")
-ap.add_argument("--host", default="127.0.0.1", help="bind address (keep 127.0.0.1 unless behind TLS + auth proxy)")
-ap.add_argument("--port", type=int, default=8080)
-ap.add_argument("--db-dir", default=None, help="persist users and paper sessions here so they survive a restart")
-a = ap.parse_args()
-from .server import App
-serve(a.host, a.port, App(db_dir=a.db_dir))
+raise SystemExit(run(["web", *sys.argv[1:]]))

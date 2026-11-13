@@ -107,7 +107,7 @@ second, slightly different one; `risk` imports `quant` because scenario margin r
 | `ops` | `core`, `utils` |
 | `governance` | `analytics`, `core`, `users`, `utils` |
 | `app` | `analytics`, `backtest`, `brokers`, `core`, `data`, `execution`, `fundamentals`, `governance`, `instruments`, `notify`, `ops`, `optimize`, `orders`, `persistence`, `portfolio`, `quant`, `relationships`, `risk`, `selection`, `sentiment`, `strategy`, `technical`, `users`, `utils` |
-| `web` | `analytics`, `app`, `backtest`, `core`, `data`, `fundamentals`, `notify`, `optimize`, `persistence`, `portfolio`, `relationships`, `risk`, `selection`, `sentiment`, `strategy`, `technical`, `users`, `utils`, `volatility` |
+| `web` | `ai`, `analytics`, `app`, `backtest`, `brokers`, `core`, `data`, `derivatives`, `dl`, `fundamentals`, `ml`, `notify`, `optimize`, `persistence`, `portfolio`, `relationships`, `research`, `risk`, `selection`, `sentiment`, `strategy`, `technical`, `users`, `utils`, `volatility` |
 
 ## 4. One platform, different roles
 
@@ -165,11 +165,11 @@ the desks a user may open.
 
 | Desk | What it does |
 |---|---|
-| `research` | backtest, optimise, score results, select instruments, map relationships, register models, propose a strategy |
+| `research` | backtest, optimise, score results, select instruments, map relationships, register models, propose a strategy, download market history |
 | `trading` | open a session on the user's own broker account, place and cancel orders, halt, personal alerts |
 | `portfolio` | allocate capital between strategies, approve or reject promotions |
 | `risk` | risk snapshot and concentration, halt and resume, demote a live strategy, firm-wide alerts |
-| `operations` | health, notification channels, undelivered notifications, instrument master, scheduled jobs |
+| `operations` | health, notification channels, undelivered notifications, instrument master, scheduled jobs, data providers, the sample-data-only lock |
 | `compliance` | audit trail, strategy history, open critical alerts (read-only) |
 | `admin` | users and roles |
 
@@ -223,4 +223,60 @@ job) never stops the others, and an error whose action is HALT (kill switch, bad
 | Notification channels holding a secret | **not stored** | listed as unresolved after a restart; register them again |
 | Fitted model objects | **not stored** (no pickling) | re-attach with `ModelRegistry.attach`, checked against the training-data fingerprint |
 | Alert rules written as code | **not stored** | only threshold-style rules can be written down |
+| Downloaded history (the shared library) | `TradingPlatform(store=...)`, tables `bar_series` and `bars` (schema v3, one row per bar) | written as it changes, before memory; capped at 400,000 bars; history saved by an earlier version under `platform.history` is moved once |
+| Data-provider settings and the sample-data-only lock | key `platform.data` | IB settings come back connected; Alpaca keys are **not stored** (listed as `needs_keys`) unless the environment supplies them |
 
+## 8. The web UI follows the same structure
+
+The menu of the web UI is grouped by the job groups of section 1, in the same order, and takes each group's title and
+question from `GET /api/structure`, so it cannot drift from `architecture.py`. Every group has at least one page except
+Foundation, which is shared code with nothing to show. A role sees a page only if it holds the permission the page
+needs; the server checks that permission again on every request, and `tests/test_web_groups.py` fails if the menu and
+the server ever disagree for any role.
+
+| Job group | Pages | Needs |
+|---|---|---|
+| Access control | Users and roles | `users:manage` |
+| Market and reference data | Price data (sample generator, downloads, history library, uploads) · Data providers · Instruments (operations loads contract specs) | `backtest:run` · `system:operate` · `portfolio:view` |
+| Signal libraries | Technical lab · News sentiment | `backtest:run` |
+| Quantitative research | Volatility · Option chain | `backtest:run` |
+| Learning and AI | Prediction models · Regimes and change points | `model:train` · `backtest:run` |
+| Strategy | Strategy builder · Instrument selection | `backtest:run` |
+| Portfolio and risk | Multi-strategy portfolio · Margin · Currency exposure | `backtest:run` · `risk:view` · `portfolio:view` |
+| Trading | Paper trading · Order-book simulator | `order:place` · `backtest:run` |
+| Validation | Backtest · Optimise (8 search methods) · Walk-forward | `backtest:run` |
+| Operations and control | Strategy approvals · Alerts and inbox · Health and jobs · Audit log | `order:view` · `risk:view` · `system:operate` · `audit:view` |
+| Application | Home: your role, desks and groups, and the whole map | everyone |
+
+The API is split the same way: `web/routes/<group>.py`, one module per job group (`access`, `market_data`, `signals`,
+`quant`, `learning`, `strategy`, `capital`, `trading`, `validation`, `operations`, `application`). Around them:
+
+| File | Layer | Job |
+|---|---|---|
+| `web/http.py` | middleware | request parsing and size limit, JSON-only bodies, static files confined to `static/`, security headers, the authenticated event stream, the threaded server |
+| `web/server.py` | application | `App`: the route table, token check and dispatch, mapping platform errors to HTTP codes, the data source of a request, shared state (sessions, uploads), closing every database |
+| `web/session.py` | trading | the paper-trading feed (sample random walk or replayed history) and the metrics alert rules read |
+| `web/common.py` | shared | JSON-safe conversion, chart series, small parsing helpers |
+| `web/routes/*.py` | API | the routes of one job group each |
+| `web/static/js/core.js` | frontend | DOM and chart helpers, the API client, shared form parts (data source, strategy parameters, editable rows) |
+| `web/static/js/pages/*.js` | frontend | the pages of one job group each, with the same names as the route modules |
+| `web/static/js/shell.js` | frontend | sign-in, the menu (`PAGES`), hash routing, the Sample / Real switch and scenario choice, start-up; loaded last |
+
+`tests/test_web_groups.py` checks that the route modules and the page scripts are exactly the job groups, that no route
+is registered twice, that each page's code lives in its group's script and calls routes of its own group, and that
+`index.html` loads the core first and the shell last. To let the web
+layer show each group, its allow-list includes the libraries it displays (`derivatives`, `research`, `ml`, `dl`, `ai`,
+`brokers` for the order-book simulator); the libraries themselves still import nothing from the web or the platform.
+
+## 9. Market data: sample, downloaded, uploaded
+
+| Source | Where it comes from | Who | Used by |
+|---|---|---|---|
+| Sample | `data/synthetic.py` scenarios through `SampleDataProvider`: seeded, any symbol and date range | everyone with research | every research page, paper trading (random walk) |
+| Downloaded history | `AlpacaDataProvider` or `IBDataProvider` (`data/providers.py`) into `HistoryLibrary` (`data/library.py`), shared by all users | operations connects; research downloads | every research page (`source="history"`), paper trading replay |
+| Uploaded | the user's own CSV files, in server memory | the uploading user only | every research page (`source="uploaded"`) |
+
+`app/marketdata.py` (`TradingPlatform.data`) holds the connections, the library and the sample-data-only lock; the desks
+expose it (research: `fetch_history`, `remove_history`; operations: `connect_data_provider`, `test_data_provider`,
+`disconnect_data_provider`, `set_sample_data_only`). Providers live in `data`, which imports only `core`: a provider is
+given its keys, it never looks them up, so the credential vault stays in the access-control layer.

@@ -5,7 +5,7 @@ API layer can call it directly without re-implementing access control.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 from ..backtest.engine import BacktestEngine, BacktestResult
 from ..brokers.base import BrokerGateway, create_gateway
@@ -33,6 +33,7 @@ from ..strategy.builder import create_from_spec, spec_factory
 from ..users.manager import BrokerAccountManager, User, UserManager
 from ..utils.helpers import json_safe
 from .engine import TradingEngine
+from .marketdata import MarketDataService
 
 log = get_logger(__name__)
 
@@ -60,13 +61,15 @@ class TradingPlatform:
         self.scheduler = Scheduler()
         self.lifecycle = StrategyLifecycle(self.audit)
         self.models = ModelRegistry()
+        self.data = MarketDataService(self.accounts.vault, self.audit)    # data providers, downloaded history, sample-data lock
         self.store = store
+        self._saved_versions: Dict[Tuple[int, str], Any] = {}         # (store, part) -> version last written there
         self.restore_report: Dict[str, Any] = self.load_state(store) if store is not None else {}
 
     # ---- durable state of the shared services ---------------------------------------------------
     def _state_parts(self) -> Dict[str, Any]:
         return {"instruments": self.instruments, "lifecycle": self.lifecycle, "models": self.models, "alerts": self.alerts,
-                "notifier": self.notifier}
+                "notifier": self.notifier, "data": self.data}
 
     def save_state(self, store: Optional[SqliteStore] = None) -> Dict[str, Any]:
         """Write the shared services to the store. Each part is saved on its own, so a part that cannot be serialised
@@ -76,12 +79,26 @@ class TradingPlatform:
             raise ConfigError("no store configured: pass one to save_state() or to TradingPlatform(store=...)")
         saved, errors = [], {}
         for name, part in self._state_parts().items():
+            version = getattr(part, "state_version", None)          # a part that counts its changes is only rewritten when it
+            if version is not None and self._saved_versions.get((id(store), name)) == version:   # changed since this store got it
+                saved.append(name)
+                continue
             try:
                 store.put(f"platform.{name}", json_safe(part.export_state()))
                 saved.append(name)
+                if version is not None:
+                    self._saved_versions[(id(store), name)] = version
             except Exception as exc:  # noqa: BLE001 - never let one part's failure lose the rest
                 errors[name] = repr(exc)
                 log.error("could not save platform state '%s': %r", name, exc)
+        if not self._history_attached(store):                   # history lives in its own tables, written as it changes;
+            try:                                                 # a different store (a backup) gets a full copy
+                self.data.library.copy_to(store)
+                saved.append("history")
+            except Exception as exc:  # noqa: BLE001
+                errors["history"] = repr(exc)
+        else:
+            saved.append("history")
         if errors:
             self.notifier.notify("Platform state not fully saved", ", ".join(sorted(errors)), Severity.ERROR, "system.persistence",
                                  key="persistence|" + "|".join(sorted(errors)))
@@ -104,11 +121,34 @@ class TradingPlatform:
                     report[name] = part.import_state(state, channels)
                 else:
                     report[name] = part.import_state(state)
+                if getattr(part, "state_version", None) is not None:
+                    self._saved_versions[(id(store), name)] = part.state_version   # what was just loaded is already there
             except Exception as exc:  # noqa: BLE001 - a damaged part must not stop the others from loading
                 report[name] = {"error": repr(exc)}
                 log.error("could not restore platform state '%s': %r", name, exc)
+        report["history"] = self._load_history(store)
         report["models_missing_objects"] = self.models.missing_models()
         return report
+
+    def _history_attached(self, store: SqliteStore) -> bool:
+        return store is self.store and self.data.library._store is store
+
+    def _load_history(self, store: SqliteStore) -> Any:
+        """Downloaded history: attached (written through) when ``store`` is the platform's own, otherwise only read. History
+        saved by an earlier version as one JSON document under ``platform.history`` is moved into the bars tables once."""
+        library = self.data.library
+        try:
+            report = library.attach(store) if store is self.store else library.load_from(store)
+            legacy = store.get("platform.history")
+            if legacy:
+                moved = library.import_state(legacy)
+                report = {"loaded": report["loaded"] + moved["loaded"], "skipped": report["skipped"] + moved["skipped"]}
+                if store is self.store and not moved["skipped"]:
+                    store.delete("platform.history")
+            return report
+        except Exception as exc:  # noqa: BLE001 - a damaged history must not stop the platform from starting
+            log.error("could not restore downloaded history: %r", exc)
+            return {"error": repr(exc)}
 
     def autosave(self) -> None:
         """Save if a store is configured. Called by the desks after every change; code that changes a service directly

@@ -115,8 +115,9 @@ ALLOWED: Dict[str, FrozenSet[str]] = {k: frozenset(v) for k, v in {
     "app": ("core", "utils", "users", "data", "instruments", "quant", "technical", "fundamentals", "sentiment", "relationships", "strategy", "selection",
             "portfolio", "risk", "brokers", "orders", "execution", "backtest", "optimize", "analytics", "persistence", "notify", "ops",
             "governance"),
-    "web": ("core", "utils", "users", "data", "technical", "fundamentals", "sentiment", "relationships", "volatility", "strategy", "selection",
-            "portfolio", "risk", "backtest", "optimize", "analytics", "persistence", "notify", "app"),
+    "web": ("core", "utils", "users", "data", "technical", "fundamentals", "sentiment", "relationships", "volatility", "derivatives",
+            "research", "ml", "dl", "ai", "strategy", "selection", "portfolio", "risk", "brokers", "backtest", "optimize", "analytics",
+            "persistence", "notify", "app"),     # one screen per job group: the web layer reaches each group's library to show it
 }.items()}
 
 # Packages that must stay pure computation: importing any of FORBIDDEN_FOR_LIBRARIES from them is always a violation,

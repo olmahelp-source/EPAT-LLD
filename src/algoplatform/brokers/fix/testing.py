@@ -107,12 +107,6 @@ class FixAcceptor:
         self._er(o, "C", "C", text="day order expired")
 
 
-def make_loopback(client_session: FixSession, acceptor: Optional[FixAcceptor] = None) -> FixAcceptor:
-    acceptor = acceptor or FixAcceptor(sender=client_session.target, target=client_session.sender)
-    acceptor.link(client_session, LoopbackChannel())
-    return acceptor
-
-
 class TcpAcceptorServer:
     """Real-socket acceptor on 127.0.0.1 for exercising TcpChannel. One connection at a time."""
 
