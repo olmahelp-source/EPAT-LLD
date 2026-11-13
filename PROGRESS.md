@@ -11,7 +11,13 @@ It is updated at the end of every unit of work. Rules for keeping it honest are 
 UTC on 2026-11-13, head `e3d8918`). Round three (the web UI regrouped by job group, commit `a1b58dd`) was pushed after
 that merge. Rounds three to five went in together through **pull request #4**
 (https://github.com/olmahelp-source/EPAT-LLD/pull/4), merged by the owner at 14:00 UTC on 2026-11-13 (head `568faae`,
-merge commit `1f1708b`). The working branch now equals the default branch: nothing is waiting to be merged.
+merge commit `1f1708b`). Round six (every package moved into its job group's folder, commit `df21697`) went in
+through **pull request #5** (https://github.com/olmahelp-source/EPAT-LLD/pull/5), merged at the owner's request at
+14:46 UTC on 2026-11-13 (merge commit `b369b69`). The working branch was fast-forwarded to that merge.
+
+**Open:** pull request #6 (this progress note, working branch into the default branch) and pull request #7 (the
+default branch into `main`, which has had nothing new since #1 on 2026-11-10; the merge is clean and leaves `main` equal to the
+default branch). Both wait for the owner.
 
 ---
 
@@ -245,9 +251,9 @@ Rounds two to four completed every pending item that can be done from this envir
 
 | # | Task | State | Why it is not done |
 |---|---|---|---|
-| 1 | (none waiting) | - | Pull request #4 was merged; the default branch holds all the work. |
+| 1 | Merge pull requests #6 and #7 | waiting for the owner | #6 is this progress note; #7 brings `main` up to the default branch (rounds two to six). |
 | 2 | Run the integrations against real services: Claude sentiment client, Slack, Telegram, webhook, e-mail, broker sandboxes, **Alpaca market data, Interactive Brokers history** | **blocked** | Needs the owner's credentials and accounts (and, for IB, a running TWS or IB Gateway); nothing here should send messages or orders to real services. All are tested against fakes. Alpaca's data server answered from this environment (HTTP 401 without keys), so the Alpaca check can be run here once keys are supplied: set them on the Data providers page and press Test. |
-| 3 | Type findings in the 112 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
+| 3 | Type findings in the 109 places in files that predate this work | open, optional | Older code, outside the request; the CI type-check job is informational. |
 | 4 | (done in round six) Move packages into one folder per job group | **done** | See section 4. |
 
 Done in round two (previously pending): web UI for the new features; persistence of the new shared services; type
@@ -303,6 +309,9 @@ roles, Home); all eight optimiser methods on the Optimise page.
 | 2026-11-13 | pull request #4 opened (GitHub API) | https://github.com/olmahelp-source/EPAT-LLD/pull/4, base `claude/trading-platform-system-y9ke4s`, 11 commits, 63 files |
 | 2026-11-13 | pull request #4 (GitHub API); CI runs 35 (push) and 36 (pull request) on `568faae` | merged at 14:00:57 UTC; lint, tests on Python 3.10 to 3.13 and optional-dependencies all success (typecheck informational) |
 | 2026-11-13 | round six: full suite (exit status checked); ruff; structure check; mypy; examples; wheel built and installed in a fresh virtual environment (`algoplatform structure --check`, `algoplatform data scenarios`, static files present, API answers); browser: all-roles walkthrough, every page as admin, scenario check | **823 tests, OK**; clean; OK; 109 pre-existing findings; all 3 examples run; installed wheel works (15 static files, 12 group folders); walkthroughs passed, no JavaScript errors |
+| 2026-11-13 | GitHub Actions run 39 (push, round six, `df21697`) | lint, tests on Python 3.10 to 3.13 and optional-dependencies all success (typecheck informational) |
+| 2026-11-13 | pull request #5 (GitHub API) | opened and merged at the owner's request: base `claude/trading-platform-system-y9ke4s`, 2 commits, 283 files; merge commit `b369b69`; working branch fast-forwarded to it (`git merge --ff-only`) |
+| 2026-11-13 | pull requests #6 and #7 opened (GitHub API); `git merge-tree --write-tree origin/main origin/claude/trading-platform-system-y9ke4s`, then `git diff --stat` of that tree against the default branch | https://github.com/olmahelp-source/EPAT-LLD/pull/6 and /pull/7; merge into `main` is clean and its tree equals the default branch |
 | 2026-11-13 | pull request #3 (GitHub API) | merged 08:44 UTC at `e3d8918`, before round three was pushed; default branch merged back into the working branch as `a1631ed` (`git diff a1b58dd a1631ed` is empty) |
 
 ---
